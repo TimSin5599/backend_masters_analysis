@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class ExtractionEngine:
     def __init__(self):
         # We use qwen3-vl:4b for state-of-the-art vision extraction
-        self.client = ollama.Client(host=os.getenv("OLLAMA_HOST", "http://localhost:11434"), timeout=1800)
+        self.client = ollama.Client(host=os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434"), timeout=1800)
         self.model_name = "qwen3-vl:8b"
         logger.info(f"ExtractionEngine initialized ({self.model_name}) natively")
 
@@ -29,7 +29,7 @@ class ExtractionEngine:
                 for page_num, page in enumerate(doc):
                     # Render full page as image (like a screenshot) at 2x resolution
                     try:
-                        zoom = 0.75  # Lower zoom to prevent context limit overflow while maintaining readability
+                        zoom = 1.5  # Lower zoom to prevent context limit overflow while maintaining readability
                         mat = fitz.Matrix(zoom, zoom)
                         pix = page.get_pixmap(matrix=mat)
                         
@@ -77,11 +77,14 @@ class ExtractionEngine:
         """Sends context Photos to Ollama (Qwen3-VL) for structured data extraction."""
         prompts = {
             "passport": (
-                "Extract passport data: name, surname, patronymic, document_number, date_of_birth, nationality. "
-                "Note: 'name' is first name, 'surname' is last name. If there is no patronymic, leave it empty. "
-                "date_of_birth must be in format YYYY-MM-DD. "
-                "Pay special attention to the MRZ zone if visible. "
-                "If some data is blurry/illegible, use context (~ prefix for guesses)."
+                "Extract passport data into a JSON object. IMPORTANT: Use exactly these keys: "
+                "\"surname\" (look for 'Surname' - can consist of multiple words), \"name\" (look for 'Given Names' - can consist of multiple words), \"patronymic\" (look for 'Father Name'), "
+                "\"document_number\" (serial number), \"date_of_birth\" (YYYY-MM-DD), \"nationality\", \"gender\" (M or F). "
+                "If 'Given Names' contains multiple words, extract them all into 'name'. "
+                "If 'Surname' contains multiple words, extract them all into 'surname'. "
+                "If 'Father Name' is present, map it to 'patronymic'. "
+                "Ensure date_of_birth is strictly YYYY-MM-DD. "
+                "Output ONLY the JSON object."
             ),
             "diploma": (
                 "Extract diploma details into a JSON object with exactly these keys: "
@@ -113,7 +116,16 @@ class ExtractionEngine:
                 "author_position (their title/role), author_institution (their organization), "
                 "key_strengths (what qualities they highlight about the candidate)."
             ),
-            "resume": "Extract from CV: summary, skills (list).",
+            "resume": (
+                "Extract specific data from CV/Resume. Return a JSON object with strictly these keys: "
+                "'personal_data': {'email': string, 'phone': string}, "
+                "'experiences': list of objects with {'company_name': string, 'position': string, 'start_date': YYYY-MM-DD, 'end_date': YYYY-MM-DD or null, 'record_type': 'work' or 'internship' or 'training'}, "
+                "'achievements': list of objects with {'achievement_type': string, 'achievement_title': string, 'company_name': string, 'date_received': YYYY-MM-DD}. "
+                "CRITICAL: Be extremely consistent with company names and job titles. Do not include 'LLC', 'Inc', or extra descriptors unless they are part of the core brand. "
+                "For 'phone', if multiple numbers are found, separate them with a comma and space (e.g., '+123, +456'). "
+                "Ensure dates are strictly YYYY-MM-DD. If only a year or month/year is provided, use the first day of that period (e.g., '2023' -> '2023-01-01')."
+                "Extract ALL work experiences and ALL significant achievements."
+            ),
             "achievement": (
                 "Extract achievement/certificate details: achievement_type (e.g., certificate, diploma, award, letter), "
                 "achievement_title (name of the award/certificate), company (issuing organization), "
@@ -128,6 +140,20 @@ class ExtractionEngine:
                 "Extract career/work history. Return a JSON with one key 'experiences' which is a list of objects. "
                 "Each object must contain: company_name, position, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD or empty if current job). "
                 "Extract ALL jobs/positions mentioned in the document."
+            ),
+            "prof_development": (
+                "Extract career/work history or training details. Return a JSON with one key 'experiences' which is a list of objects. "
+                "Each object must contain: company_name, position, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD or empty if current job). "
+                "Extract ALL jobs, internships or training programs mentioned in the document."
+            ),
+            "second_diploma": (
+                "Extract education data from a diploma. Return a JSON with: institution_name, degree_title, major, "
+                "graduation_date (YYYY-MM-DD), diploma_serial_number."
+            ),
+            "certification": (
+                "Extract achievement/certificate details: achievement_type (e.g., certificate, diploma, award, letter), "
+                "achievement_title (name of the award/certificate), company (issuing organization), "
+                "date_received (in YYYY-MM-DD format)."
             )
         }
         
@@ -141,15 +167,24 @@ class ExtractionEngine:
             6. DO NOT use <think> tags or output reasoning steps. Output the JSON block IMMEDIATELY."""
         )
         
-        user_task = prompts.get(category, "Extract data as JSON.")
+        # Handle category suffixes (e.g., 'prof_development:internship')
+        base_category = category.split(':')[0] if ':' in category else category
+        user_task = prompts.get(category) or prompts.get(base_category)
+        logger.info(f"Processing AI extraction for category: {category} (base: {base_category}). Task found: {user_task is not None}")
+        
+        if not user_task:
+            logger.warning(f"No specific prompt found for category: {category}. Falling back to default.")
+            user_task = "Extract data as JSON."
+
         prompt = f"Category: {category}\n\nTask: {user_task}"
-        logger.info(f"Calling Ollama ({self.model_name}) with {len(images_b64)} context photos")
+        logger.info(f"Prompt prepared. Length: {len(prompt)}")
         
         max_retries = 3
         last_error = "Unknown error"
         
         for attempt in range(max_retries):
             try:
+                logger.info(f"Ollama chat started for {category} [Attempt {attempt+1}]")
                 response = self.client.chat(
                     model=self.model_name,
                     messages=[
@@ -165,6 +200,7 @@ class ExtractionEngine:
                         "temperature": 0.0
                     }
                 )
+                logger.info(f"Ollama chat completed for {category} [Attempt {attempt+1}]")
                 
                 # Debug: log full response metadata
                 resp_dict = response.model_dump() if hasattr(response, 'model_dump') else dict(response)
@@ -259,13 +295,45 @@ class ExtractionEngine:
                 match = re.search(r'\d+', low_k)
                 if match: normalized[f"gpa_semester_{match.group()}"] = v
                 else: normalized[k] = v
+            elif low_k in ["passport_number", "serial_number", "id_number", "document_number"]:
+                normalized["document_number"] = v
+            elif low_k in ["sex", "gender"]:
+                # Normalize to M/F or empty
+                val = str(v).upper()
+                if "M" in val or "М" in val: normalized["gender"] = "M"
+                elif "F" in val or "W" in val or "Ж" in val or "F" in val: normalized["gender"] = "F"
+                else: normalized["gender"] = v
+            elif low_k in ["given_names", "first_name"]:
+                normalized["name"] = v
+            elif low_k in ["last_name", "surname"]:
+                normalized["surname"] = v
+            elif low_k in ["father_name", "father", "patronymic"]:
+                normalized["patronymic"] = v
+            elif low_k == "name" and "surname" not in data and "last_name" not in data and "given_names" not in data:
+                # If only 'name' is provided, it might be the full name
+                parts = str(v).split()
+                if len(parts) >= 2:
+                    normalized["surname"] = parts[0]
+                    normalized["name"] = parts[1]
+                    if len(parts) > 2:
+                        normalized["patronymic"] = " ".join(parts[2:])
+                else:
+                    normalized["name"] = v
             else:
                 normalized[k] = v
 
-        # Sanitize for Go backend (needs map[string]string mostly, except 'subjects' and 'experiences')
+        # Flatten personal_data if it exists
+        if "personal_data" in normalized and isinstance(normalized["personal_data"], dict):
+            pd = normalized.pop("personal_data")
+            if "email" in pd and pd["email"]:
+                normalized["email"] = pd["email"]
+            if "phone" in pd and pd["phone"]:
+                normalized["phone"] = pd["phone"]
+
+        # Sanitize for Go backend (needs map[string]string mostly, except 'subjects', 'experiences', 'achievements')
         sanitized = {}
         for k, v in normalized.items():
-            if k in ["subjects", "experiences"] and isinstance(v, list):
+            if k in ["subjects", "experiences", "achievements"] and isinstance(v, list):
                 sanitized[k] = json.dumps(v)
             elif isinstance(v, list):
                 if v and isinstance(v[0], dict):

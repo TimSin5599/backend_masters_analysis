@@ -3,13 +3,13 @@ package entity
 const (
 	RoleAdmin    = "admin"
 	RoleManager  = "manager"
-	RoleObserver = "observer"
+	RoleExpert   = "expert"
 	RoleOperator = "operator"
 )
 
 func IsValidRole(role string) bool {
 	switch role {
-	case RoleAdmin, RoleManager, RoleObserver, RoleOperator:
+	case RoleAdmin, RoleManager, RoleExpert, RoleOperator:
 		return true
 	}
 	return false

@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"manage-service/internal/entity"
 	"manage-service/internal/usecase"
 	ws "manage-service/internal/websocket"
 	"net/http"
@@ -53,8 +54,10 @@ func NewRouter(handler *gin.Engine, t *usecase.ApplicantUseCase, queue usecase.D
 		v1.GET("/applicants/:id/data", r.getApplicantData)
 		v1.PATCH("/applicants/:id/data", r.updateApplicantData)
 		v1.POST("/applicants/:id/documents", r.uploadDocument)
+		v1.GET("/applicants/:id/documents", r.listDocuments)
 		v1.GET("/applicants/:id/documents/view", r.viewDocument)
 		v1.GET("/documents/:id/view", r.viewDocumentByID)
+		v1.DELETE("/applicants/:id/documents/:docId", r.deleteDocument)
 		v1.DELETE("/applicants/:id/data/:category/:dataId", r.deleteApplicantData)
 		v1.POST("/documents/:id/reprocess", r.reprocessDocument)
 		v1.POST("/applicants/:id/documents/reprocess", r.reprocessLatestDocument)
@@ -63,9 +66,12 @@ func NewRouter(handler *gin.Engine, t *usecase.ApplicantUseCase, queue usecase.D
 		v1.GET("/applicants/:id/ws", r.websocketHandler)
 		
 		v1.GET("/applicants/:id/evaluations", r.listExpertEvaluations)
-		v1.POST("/applicants/:id/evaluations", r.saveExpertEvaluation)
+		v1.PUT("/applicants/:id/evaluations", r.saveExpertEvaluation) // Changed from POST to PUT as it's an upsert
+		v1.GET("/evaluations/criteria", r.getEvaluationCriteria)
 		v1.GET("/experts/slots", r.getExpertSlots)
 		v1.POST("/experts/slots", r.assignExpertSlot)
+
+		v1.GET("/experts", r.listExperts)
 	}
 
 	handler.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -221,6 +227,41 @@ func (r *applicantRoutes) deleteApplicantData(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "deleted successfully"})
+}
+
+// @Summary Удаление документа
+// @Description Полное удаление документа абитуриента и всех связанных с ним извлеченных данных
+// @Tags documents
+// @Accept json
+// @Produce json
+// @Param id path int true "ID абитуриента"
+// @Param docId path int true "ID документа"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /v1/applicants/{id}/documents/{docId} [delete]
+func (r *applicantRoutes) deleteDocument(c *gin.Context) {
+	idStr := c.Param("id")
+	applicantID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid applicant id"})
+		return
+	}
+
+	docIdStr := c.Param("docId")
+	docID, err := strconv.ParseInt(docIdStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid document id"})
+		return
+	}
+
+	err = r.t.DeleteDocument(c.Request.Context(), applicantID, docID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "document and associated data deleted successfully"})
 }
 
 // @Summary Просмотр документа по ID
@@ -393,6 +434,7 @@ func (r *applicantRoutes) uploadDocument(c *gin.Context) {
 	}
 
 	category := c.PostForm("category")
+	docType := c.PostForm("doc_type")
 	if category == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "category of the document is required"})
 		return
@@ -418,14 +460,41 @@ func (r *applicantRoutes) uploadDocument(c *gin.Context) {
 		return
 	}
 
-	err = r.t.UploadDocument(c.Request.Context(), applicantID, category, file.Filename, content)
+	doc, err := r.t.UploadDocument(c.Request.Context(), applicantID, category, file.Filename, content, docType)
+	if (err != nil) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "document uploaded and processing started", "document_id": doc.ID})
+}
+
+// @Summary Список документов абитуриента
+// @Description Возвращает список всех документов, загруженных для абитуриента
+// @Tags applicants
+// @Produce json
+// @Param id path int true "ID абитуриента"
+// @Success 200 {array} entity.Document
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /v1/applicants/{id}/documents [get]
+func (r *applicantRoutes) listDocuments(c *gin.Context) {
+	idStr := c.Param("id")
+	applicantID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid applicant id"})
+		return
+	}
+
+	docs, err := r.t.GetDocuments(c.Request.Context(), applicantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "document uploaded and processing started"})
+	c.JSON(http.StatusOK, docs)
 }
+
 // @Summary Получить данные документа
 // @Description Получить данные (парсинг) из документа абитуриента
 // @Tags applicants
@@ -532,13 +601,28 @@ func (r *applicantRoutes) websocketHandler(c *gin.Context) {
 }
 
 type expertEvaluationRequest struct {
-	ExpertID int64  `json:"expert_id"`
-	Category string `json:"category" binding:"required"`
-	Score    int    `json:"score" binding:"required"`
-	Comment  string `json:"comment"`
-	UserID   int64  `json:"user_id" binding:"required"`
-	UserName string `json:"user_name" binding:"required"`
-	UserRole string `json:"user_role" binding:"required"`
+	UserID   string                    `json:"user_id" binding:"required"`
+	UserName string                    `json:"user_name" binding:"required"`
+	UserRole string                    `json:"user_role" binding:"required"`
+	ExpertID string                    `json:"expert_id"` // slot expert id
+	Scores   []entity.ExpertEvaluation `json:"scores" binding:"required"`
+	Complete bool                      `json:"complete"`
+}
+
+// @Summary Получить критерии оценки
+// @Description Возвращает список всех критериев оценки с макс. баллами
+// @Tags experts
+// @Produce json
+// @Success 200 {array} entity.EvaluationCriteria
+// @Failure 500 {object} map[string]string
+// @Router /v1/evaluations/criteria [get]
+func (r *applicantRoutes) getEvaluationCriteria(c *gin.Context) {
+	criteria, err := r.t.GetEvaluationCriteria(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, criteria)
 }
 
 // @Summary Сохранить оценку эксперта
@@ -560,13 +644,19 @@ func (r *applicantRoutes) saveExpertEvaluation(c *gin.Context) {
 		return
 	}
 
-	if req.ExpertID == 0 {
+	if req.ExpertID == "" || req.ExpertID == "0" {
 		req.ExpertID = req.UserID
 	}
 
-	err := r.t.SaveExpertEvaluation(c.Request.Context(), applicantID, req.ExpertID, req.UserID, req.UserName, req.UserRole, req.Category, req.Score, req.Comment)
+	err := r.t.SaveExpertEvaluation(c.Request.Context(), applicantID, req.ExpertID, req.UserID, req.UserName, req.UserRole, req.Scores, req.Complete)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		status := http.StatusInternalServerError
+		if err == entity.ErrEvaluationImmutable {
+			status = http.StatusConflict
+		} else if err == entity.ErrScoreExceedsMax {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -583,8 +673,9 @@ func (r *applicantRoutes) saveExpertEvaluation(c *gin.Context) {
 func (r *applicantRoutes) listExpertEvaluations(c *gin.Context) {
 	idStr := c.Param("id")
 	applicantID, _ := strconv.ParseInt(idStr, 10, 64)
+	currentUserID := c.Query("current_user_id")
 
-	evals, err := r.t.ListExpertEvaluations(c.Request.Context(), applicantID)
+	evals, err := r.t.ListExpertEvaluations(c.Request.Context(), applicantID, currentUserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -609,7 +700,7 @@ func (r *applicantRoutes) getExpertSlots(c *gin.Context) {
 }
 
 type assignSlotRequest struct {
-	UserID     int64  `json:"user_id" binding:"required"`
+	UserID     string `json:"user_id" binding:"required"`
 	SlotNumber int    `json:"slot_number" binding:"required"`
 	UserRole   string `json:"user_role" binding:"required"`
 }
@@ -636,6 +727,21 @@ func (r *applicantRoutes) assignExpertSlot(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "expert slot assigned"})
+}
+
+// @Summary Список экспертов
+// @Description Возвращает список всех пользователей с ролью эксперта или наблюдателя
+// @Tags experts
+// @Produce json
+// @Success 200 {array} entity.User
+// @Router /v1/experts [get]
+func (r *applicantRoutes) listExperts(c *gin.Context) {
+	experts, err := r.t.ListExperts(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, experts)
 }
 
 // LoggingMiddleware - middleware для подробного логирования всех HTTP запросов

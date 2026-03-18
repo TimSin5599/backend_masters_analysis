@@ -105,6 +105,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/applicants/{id}": {
+            "delete": {
+                "description": "Полностью удаляет абитуриента и связанные с ним данные из системы",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "applicants"
+                ],
+                "summary": "Удаление абитуриента",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID абитуриента",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/applicants/{id}/data": {
             "get": {
                 "description": "Получить данные (парсинг) из документа абитуриента",
@@ -474,6 +527,80 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/applicants/{id}/evaluations": {
+            "get": {
+                "description": "Возвращает все оценки для абитуриента",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "experts"
+                ],
+                "summary": "Список оценок экспертов",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID абитуриента",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entity.ExpertEvaluation"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Сохраняет или обновляет оценку за категорию документа. Лимит 3 эксперта на систему.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "experts"
+                ],
+                "summary": "Сохранить оценку эксперта",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID абитуриента",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Данные оценки",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/v1.expertEvaluationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/applicants/{id}/queue-status": {
             "get": {
                 "description": "Возвращает массив статусов очереди для абитуриента",
@@ -694,6 +821,87 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/experts": {
+            "get": {
+                "description": "Возвращает список всех пользователей с ролью эксперта или наблюдателя",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "experts"
+                ],
+                "summary": "Список экспертов",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entity.User"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/experts/slots": {
+            "get": {
+                "description": "Возвращает 3 слота экспертов и назначенных на них пользователей",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "experts"
+                ],
+                "summary": "Список слотов экспертов",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entity.ExpertSlot"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Закрепляет пользователя за слотом Эксперт 1, 2 или 3.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "experts"
+                ],
+                "summary": "Назначить эксперта на слот",
+                "parameters": [
+                    {
+                        "description": "Данные слота",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/v1.assignSlotRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/programs": {
             "get": {
                 "description": "Получаем список образовательных программ",
@@ -830,6 +1038,61 @@ const docTemplate = `{
                 }
             }
         },
+        "entity.ExpertEvaluation": {
+            "type": "object",
+            "properties": {
+                "applicant_id": {
+                    "type": "integer"
+                },
+                "category": {
+                    "type": "string"
+                },
+                "comment": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "expert_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_admin_override": {
+                    "type": "boolean"
+                },
+                "score": {
+                    "type": "integer"
+                },
+                "source_info": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.ExpertSlot": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "slot_number": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "user_name": {
+                    "type": "string"
+                }
+            }
+        },
         "entity.Program": {
             "type": "object",
             "properties": {
@@ -853,6 +1116,42 @@ const docTemplate = `{
                 }
             }
         },
+        "entity.User": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "v1.assignSlotRequest": {
+            "type": "object",
+            "required": [
+                "slot_number",
+                "user_id",
+                "user_role"
+            ],
+            "properties": {
+                "slot_number": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "user_role": {
+                    "type": "string"
+                }
+            }
+        },
         "v1.createApplicantRequest": {
             "type": "object",
             "required": [
@@ -872,6 +1171,39 @@ const docTemplate = `{
                 },
                 "program_id": {
                     "type": "integer"
+                }
+            }
+        },
+        "v1.expertEvaluationRequest": {
+            "type": "object",
+            "required": [
+                "category",
+                "score",
+                "user_id",
+                "user_name",
+                "user_role"
+            ],
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "comment": {
+                    "type": "string"
+                },
+                "expert_id": {
+                    "type": "string"
+                },
+                "score": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "user_name": {
+                    "type": "string"
+                },
+                "user_role": {
+                    "type": "string"
                 }
             }
         }

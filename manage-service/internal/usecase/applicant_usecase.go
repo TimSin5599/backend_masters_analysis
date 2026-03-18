@@ -22,6 +22,10 @@ type ApplicantUseCase struct {
 	s3        S3Provider // Assuming we'll have an interface for MinIO
 }
 
+func (uc *ApplicantUseCase) GetDocuments(ctx context.Context, applicantID int64) ([]entity.Document, error) {
+	return uc.repo.GetDocuments(ctx, applicantID)
+}
+
 func New(r ApplicantRepo, q DocumentQueueRepo, p DocumentQueueProducer, e ExtractionClient, s3 S3Provider) *ApplicantUseCase {
 	return &ApplicantUseCase{
 		repo:      r,
@@ -65,24 +69,26 @@ func (uc *ApplicantUseCase) CreateApplicant(ctx context.Context, programID int64
 }
 
 // GetApplicantData
-func (uc *ApplicantUseCase) GetApplicantData(ctx context.Context, id int64, category string) (interface{}, error) {
+func (uc *ApplicantUseCase) GetApplicantData(ctx context.Context, applicantID int64, category string) (interface{}, error) {
 	switch category {
-	case "passport":
-		return uc.repo.GetLatestIdentification(ctx, id)
+	case "passport", "personal_data", "resume":
+		return uc.repo.GetLatestIdentification(ctx, applicantID)
 	case "diploma":
-		return uc.repo.GetLatestEducation(ctx, id)
-	case "work":
-		return uc.repo.ListWorkExperience(ctx, id)
+		return uc.repo.GetLatestEducation(ctx, applicantID)
+	case "work", "prof_development":
+		return uc.repo.ListWorkExperience(ctx, applicantID, category)
 	case "recommendation":
-		return uc.repo.ListRecommendations(ctx, id)
-	case "achievement":
-		return uc.repo.ListAchievements(ctx, id)
+		return uc.repo.ListRecommendations(ctx, applicantID)
+	case "achievement", "certification":
+		return uc.repo.ListAchievements(ctx, applicantID, category)
 	case "transcript":
-		return uc.repo.GetLatestTranscript(ctx, id)
+		return uc.repo.GetLatestTranscript(ctx, applicantID)
 	case "language":
-		return uc.repo.GetLatestLanguageTraining(ctx, id)
+		return uc.repo.GetLatestLanguageTraining(ctx, applicantID)
 	case "motivation":
-		return uc.repo.GetLatestMotivation(ctx, id)
+		return uc.repo.GetLatestMotivation(ctx, applicantID)
+	case "second_diploma":
+		return uc.repo.ListEducation(ctx, applicantID)
 	default:
 		return nil, fmt.Errorf("unknown category: %s", category)
 	}
@@ -155,12 +161,12 @@ func convertImageToPDF(fileName string, content []byte) ([]byte, error) {
 }
 
 // UploadDocument - Загрузка документа и триггер ИИ
-func (uc *ApplicantUseCase) UploadDocument(ctx context.Context, applicantID int64, category string, fileName string, content []byte) error {
+func (uc *ApplicantUseCase) UploadDocument(ctx context.Context, applicantID int64, category string, fileName string, content []byte, docType string) (entity.Document, error) {
 	ext := strings.ToLower(filepath.Ext(fileName))
 	if ext == ".jpg" || ext == ".jpeg" || ext == ".png" {
 		pdfBytes, err := convertImageToPDF(fileName, content)
 		if err != nil {
-			return fmt.Errorf("failed to convert image to pdf: %w", err)
+			return entity.Document{}, fmt.Errorf("failed to convert image to pdf: %w", err)
 		}
 		content = pdfBytes
 		fileName = fileName[:len(fileName)-len(ext)] + ".pdf"
@@ -170,13 +176,17 @@ func (uc *ApplicantUseCase) UploadDocument(ctx context.Context, applicantID int6
 	storagePath := fmt.Sprintf("applicants/%d/%s/%s", applicantID, category, fileName)
 	err := uc.s3.UploadFile(ctx, storagePath, content)
 	if err != nil {
-		return fmt.Errorf("UseCase - UploadDocument - s3.UploadFile: %w", err)
+		return entity.Document{}, fmt.Errorf("UseCase - UploadDocument - s3.UploadFile: %w", err)
 	}
 
 	// 2. Регистрация в БД
+	fileType := category
+	if docType != "" {
+		fileType = docType
+	}
 	doc := entity.Document{
 		ApplicantID: applicantID,
-		FileType:    category, // Map category to FileType for now
+		FileType:    fileType,
 		StoragePath: storagePath,
 		FileName:    fileName,
 		Status:      "processing",
@@ -184,7 +194,7 @@ func (uc *ApplicantUseCase) UploadDocument(ctx context.Context, applicantID int6
 
 	err = uc.repo.StoreDocument(ctx, &doc)
 	if err != nil {
-		return fmt.Errorf("UseCase - UploadDocument - uc.repo.StoreDocument: %w", err)
+		return entity.Document{}, fmt.Errorf("UseCase - UploadDocument - uc.repo.StoreDocument: %w", err)
 	}
 
 	// 3. Добавление задачи в очередь (RabbitMQ & PostgreSQL)
@@ -196,7 +206,7 @@ func (uc *ApplicantUseCase) UploadDocument(ctx context.Context, applicantID int6
 		priority = 9
 	case "language":
 		priority = 8
-	case "experience":
+	case "experience", "resume":
 		priority = 7
 	case "recommendation":
 		priority = 6
@@ -206,9 +216,14 @@ func (uc *ApplicantUseCase) UploadDocument(ctx context.Context, applicantID int6
 		priority = 4
 	}
 
+	taskCategory := category
+	if docType != "" {
+		taskCategory = fmt.Sprintf("%s:%s", category, docType)
+	}
+
 	task := entity.DocumentQueueTask{
 		ApplicantID:      applicantID,
-		DocumentCategory: category,
+		DocumentCategory: taskCategory,
 		FilePath:         storagePath,
 		Priority:         priority,
 		Status:           "pending",
@@ -216,7 +231,7 @@ func (uc *ApplicantUseCase) UploadDocument(ctx context.Context, applicantID int6
 
 	queueID, err := uc.queue.Enqueue(ctx, task)
 	if err != nil {
-		return fmt.Errorf("UseCase - UploadDocument - queue.Enqueue: %w", err)
+		return entity.Document{}, fmt.Errorf("UseCase - UploadDocument - queue.Enqueue: %w", err)
 	}
 
 	task.ID = queueID
@@ -225,10 +240,10 @@ func (uc *ApplicantUseCase) UploadDocument(ctx context.Context, applicantID int6
 		// If publishing fails, mark as failed in DB
 		errMsg := err.Error()
 		_ = uc.queue.UpdateStatus(context.Background(), queueID, "failed", &errMsg)
-		return fmt.Errorf("UseCase - UploadDocument - producer.PublishTask: %w", err)
+		return entity.Document{}, fmt.Errorf("UseCase - UploadDocument - producer.PublishTask: %w", err)
 	}
 
-	return nil
+	return doc, nil
 }
 
 func (uc *ApplicantUseCase) ReprocessDocument(ctx context.Context, documentID int64) error {
@@ -247,9 +262,21 @@ func (uc *ApplicantUseCase) ReprocessDocument(ctx context.Context, documentID in
 	// 3. Добавление задачи в очередь (RabbitMQ & PostgreSQL)
 	priority := 10 // Повторное сканирование получает высокий приоритет
 
+	taskCategory := doc.FileType
+	// Если это профессиональное развитие, попробуем восстановить тип из существующих записей
+	if doc.FileType == "prof_development" {
+		records, _ := uc.repo.ListWorkExperience(ctx, doc.ApplicantID, doc.FileType)
+		for _, r := range records {
+			if r.DocumentID != nil && *r.DocumentID == documentID && r.RecordType != "" {
+				taskCategory = fmt.Sprintf("%s:%s", doc.FileType, r.RecordType)
+				break
+			}
+		}
+	}
+
 	task := entity.DocumentQueueTask{
 		ApplicantID:      doc.ApplicantID,
-		DocumentCategory: doc.FileType, // We mapped category to FileType earlier
+		DocumentCategory: taskCategory,
 		FilePath:         doc.StoragePath,
 		Priority:         priority,
 		Status:           "pending",
@@ -286,7 +313,16 @@ func (uc *ApplicantUseCase) ReprocessLatestDocument(ctx context.Context, applica
 }
 
 // ProcessAIResult - Обработка "сырых" данных из ИИ и перевод в типизированные таблицы (V1)
-func (uc *ApplicantUseCase) ProcessAIResult(ctx context.Context, applicantID int64, documentID int64, category string, rawData map[string]string) error {
+func (uc *ApplicantUseCase) ProcessAIResult(ctx context.Context, applicantID int64, documentID int64, taskCategory string, rawData map[string]string) error {
+	category := taskCategory
+	docType := ""
+	if strings.Contains(taskCategory, ":") {
+		parts := strings.SplitN(taskCategory, ":", 2)
+		category = parts[0]
+		docType = parts[1]
+	}
+
+	fmt.Printf("[USECASE] ProcessAIResult: Category=%s, Applicant=%d, Doc=%d, Keys=%v\n", category, applicantID, documentID, getKeys(rawData))
 	// 0. Check for AI extraction errors
 	if errStr, ok := rawData["error"]; ok {
 		return fmt.Errorf("AI extraction failed: %s", errStr)
@@ -298,19 +334,41 @@ func (uc *ApplicantUseCase) ProcessAIResult(ctx context.Context, applicantID int
 	}
 
 	// 2. В зависимости от категории наполняем конкретную таблицу (Version 1, source='model')
+	
+	// Prioritize resume processing if docType is resume
+	if docType == "resume" {
+		category = "resume"
+	}
 
-	// Helper functions scoped to the switch
+	normalizeForDedupe := func(s string) string {
+		s = strings.ToLower(s)
+		// Remove common punctuation and trim
+		s = strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || (r >= 'а' && r <= 'я') || r == ' ' {
+				return r
+			}
+			return -1
+		}, s)
+		return strings.Join(strings.Fields(s), " ") // Remove extra spaces
+	}
 	parseTimeSafe := func(s string) time.Time {
-		if s == "" || len(s) < 10 {
+		if s == "" {
 			return time.Time{}
 		}
 		// Some models return date strings inconsistently.
-		// Try a few formats or fallback
-		t, e := time.Parse("2006-01-02", s[:10])
-		if e != nil {
-			return time.Time{} // Return zero time if it fails completely
+		// Try a few formats: ISO, Russian, English textual
+		formats := []string{"2006-01-02", "02.01.2006", "02 Jan 2006", "2 Jan 2006"}
+		for _, f := range formats {
+			if t, e := time.Parse(f, s); e == nil {
+				return t
+			}
 		}
-		return t
+		// Try to handle "10 OCT 1995" if it comes in uppercase or variations
+		s_cl := strings.Title(strings.ToLower(s))
+		if t, e := time.Parse("02 Jan 2006", s_cl); e == nil {
+			return t
+		}
+		return time.Time{}
 	}
 
 	// 2. Clear old data for this exact document_id (UPSERT strategy via Delete-Then-Insert)
@@ -342,7 +400,10 @@ func (uc *ApplicantUseCase) ProcessAIResult(ctx context.Context, applicantID int
 			Name:           rawData["name"],
 			Surname:        rawData["surname"],
 			Patronymic:     rawData["patronymic"],
+			Email:          rawData["email"],
+			Phone:          rawData["phone"],
 			DocumentNumber: rawData["document_number"],
+			Gender:         rawData["gender"],
 			Nationality:    rawData["nationality"],
 			DateOfBirth:    dob,
 			Source:         "model",
@@ -352,21 +413,27 @@ func (uc *ApplicantUseCase) ProcessAIResult(ctx context.Context, applicantID int
 			return err
 		}
 
-	case "diploma":
-		gradDate := parseTimeSafe(rawData["graduation_date"])
+	case "achievement", "certification":
 		docIDRef := &documentID
-		data := entity.EducationData{
-			ApplicantID:         applicantID,
-			DocumentID:          docIDRef,
-			InstitutionName:     rawData["institution_name"],
-			DegreeTitle:         rawData["degree_title"],
-			Major:               rawData["major"],
-			GraduationDate:      gradDate,
-			DiplomaSerialNumber: rawData["diploma_serial_number"],
-			Source:              "model",
-			Version:             1,
+		dateReceived := parseTimeSafe(rawData["date_received"])
+		// AI may use "company" instead of "company_name" after prompt update
+		company := rawData["company"]
+		if company == "" {
+			company = rawData["company_name"]
 		}
-		if err := uc.repo.StoreEducation(ctx, data); err != nil {
+
+		data := entity.AchievementData{
+			ApplicantID:      applicantID,
+			DocumentID:       docIDRef,
+			AchievementTitle: rawData["achievement_title"],
+			Description:      rawData["description"],
+			DateReceived:     dateReceived,
+			AchievementType:  rawData["achievement_type"],
+			Company:          company,
+			Source:           "model",
+			Version:          1,
+		}
+		if err := uc.repo.StoreAchievement(ctx, data); err != nil {
 			return err
 		}
 
@@ -386,21 +453,21 @@ func (uc *ApplicantUseCase) ProcessAIResult(ctx context.Context, applicantID int
 			return err
 		}
 
-	case "achievement":
+	case "diploma", "second_diploma":
+		gradDate := parseTimeSafe(rawData["graduation_date"])
 		docIDRef := &documentID
-		dateReceived := parseTimeSafe(rawData["date_received"])
-		data := entity.AchievementData{
-			ApplicantID:      applicantID,
-			DocumentID:       docIDRef,
-			AchievementTitle: rawData["achievement_title"],
-			Description:      rawData["description"],
-			DateReceived:     dateReceived,
-			AchievementType:  rawData["achievement_type"],
-			Company:          rawData["company"],
-			Source:           "model",
-			Version:          1,
+		data := entity.EducationData{
+			ApplicantID:         applicantID,
+			DocumentID:          docIDRef,
+			InstitutionName:     rawData["institution_name"],
+			DegreeTitle:         rawData["degree_title"],
+			Major:               rawData["major"],
+			GraduationDate:      gradDate,
+			DiplomaSerialNumber: rawData["diploma_serial_number"],
+			Source:              "model",
+			Version:             1,
 		}
-		if err := uc.repo.StoreAchievement(ctx, data); err != nil {
+		if err := uc.repo.StoreEducation(ctx, data); err != nil {
 			return err
 		}
 
@@ -437,7 +504,9 @@ func (uc *ApplicantUseCase) ProcessAIResult(ctx context.Context, applicantID int
 			return err
 		}
 
-	case "work":
+	case "prof_development", "work":
+		recordType := docType
+
 		docIDRef := &documentID
 		var experiences []map[string]interface{}
 		if expRaw, ok := rawData["experiences"]; ok && expRaw != "" {
@@ -464,11 +533,200 @@ func (uc *ApplicantUseCase) ProcessAIResult(ctx context.Context, applicantID int
 					EndDate:     endDatePtr,
 					Country:     "",
 					City:        "",
+					RecordType:  recordType,
 					Source:      "model",
 					Version:     1,
 				}
 				if err := uc.repo.StoreWorkExperience(ctx, wExp); err != nil {
 					return err
+				}
+			}
+		}
+
+	case "resume":
+		docIDRef := &documentID
+		
+		// 1. Identification (Email, Phone) - Merge with existing
+		newEmail := rawData["email"]
+		newPhone := rawData["phone"]
+		
+		if newEmail != "" || newPhone != "" {
+			latest, err := uc.repo.GetLatestIdentification(ctx, applicantID)
+			if err == nil {
+				// Overwrite logic: prefer data from model
+				updated := false
+				if newEmail != "" {
+					latest.Email = newEmail
+					updated = true
+				}
+				
+				if newPhone != "" {
+					// Normalize new phone
+					normalizedNewPhone := strings.ReplaceAll(newPhone, " +", ", +")
+					parts := strings.Split(normalizedNewPhone, ",")
+					var cleanParts []string
+					for _, p := range parts {
+						p = strings.TrimSpace(p)
+						if p != "" {
+							cleanParts = append(cleanParts, p)
+						}
+					}
+					finalPhone := strings.Join(cleanParts, ", ")
+					
+					if finalPhone != "" {
+						latest.Phone = finalPhone
+						updated = true
+					}
+				}
+				
+				if updated {
+					latest.Source = "model"
+					latest.Version = 1
+					latest.DocumentID = docIDRef
+					_ = uc.repo.UpdateIdentification(ctx, latest)
+				}
+			} else {
+				// No existing record, create new one
+				// If incoming phone has multiple numbers but no commas, normalize it
+				normalizedPhone := strings.ReplaceAll(newPhone, " +", ", +")
+				// Ensure it's clean (trim all parts)
+				parts := strings.Split(normalizedPhone, ",")
+				var cleanParts []string
+				for _, p := range parts {
+					p = strings.TrimSpace(p)
+					if p != "" {
+						cleanParts = append(cleanParts, p)
+					}
+				}
+				finalPhone := strings.Join(cleanParts, ", ")
+
+				if err := uc.repo.StoreIdentification(ctx, entity.IdentificationData{
+					ApplicantID: applicantID,
+					Email:       newEmail,
+					Phone:       finalPhone,
+					Source:      "model",
+					Version:     1,
+					DocumentID:  docIDRef,
+				}); err != nil {
+					fmt.Printf("[USECASE] ❌ Error storing new identification from resume: %v\n", err)
+				} else {
+					fmt.Printf("[USECASE] ✅ Stored new identification for applicant %d from resume\n", applicantID)
+				}
+			}
+		}
+
+		// 2. Experiences - Deduplicate
+		var newExperiences []map[string]interface{}
+		if expRaw, ok := rawData["experiences"]; ok && expRaw != "" {
+			if err := json.Unmarshal([]byte(expRaw), &newExperiences); err != nil {
+				fmt.Printf("[USECASE] ❌ Failed to unmarshal experiences: %v\n", err)
+			}
+			fmt.Printf("[USECASE] Found %d experiences in resume for applicant %d\n", len(newExperiences), applicantID)
+			
+			existingExp, _ := uc.repo.ListWorkExperience(ctx, applicantID, "")
+			
+			for _, exp := range newExperiences {
+				companyName, _ := exp["company_name"].(string)
+				position, _ := exp["position"].(string)
+				startDateStr, _ := exp["start_date"].(string)
+				endDateStr, _ := exp["end_date"].(string)
+				recordType, _ := exp["record_type"].(string)
+				if recordType == "" {
+					recordType = "work"
+				}
+				
+				startDate := parseTimeSafe(startDateStr)
+				var endDate *time.Time
+				if endDateStr != "" {
+					et := parseTimeSafe(endDateStr)
+					endDate = &et
+				}
+
+				// Check for duplicates with normalization
+				isDuplicate := false
+				cleanNewCompany := normalizeForDedupe(companyName)
+				cleanNewPosition := normalizeForDedupe(position)
+
+				for _, ee := range existingExp {
+					if normalizeForDedupe(ee.CompanyName) == cleanNewCompany && 
+					   normalizeForDedupe(ee.Position) == cleanNewPosition && 
+					   (ee.StartDate.Equal(startDate) || (ee.StartDate.Year() == startDate.Year() && ee.StartDate.Month() == startDate.Month())) {
+						isDuplicate = true
+						break
+					}
+				}
+
+				if !isDuplicate {
+					wExp := entity.WorkExperience{
+						ApplicantID: applicantID,
+						DocumentID:  docIDRef,
+						CompanyName: companyName,
+						Position:    position,
+						StartDate:   startDate,
+						EndDate:     endDate,
+						RecordType:  recordType,
+						Source:      "model",
+						Version:     1,
+					}
+					if err := uc.repo.StoreWorkExperience(ctx, wExp); err != nil {
+						fmt.Printf("[USECASE] ❌ Error storing experience: %v\n", err)
+					} else {
+						fmt.Printf("[USECASE] ✅ Stored experience: %s at %s\n", position, companyName)
+					}
+				} else {
+					fmt.Printf("[USECASE] ⏭️ Skipped duplicate experience: %s at %s (Starts: %s)\n", position, companyName, startDateStr)
+				}
+			}
+		}
+
+		// 3. Achievements - Deduplicate
+		var newAchievements []map[string]interface{}
+		if achRaw, ok := rawData["achievements"]; ok && achRaw != "" {
+			if err := json.Unmarshal([]byte(achRaw), &newAchievements); err != nil {
+				fmt.Printf("[USECASE] ❌ Failed to unmarshal achievements: %v\n", err)
+			}
+			fmt.Printf("[USECASE] Found %d achievements in resume for applicant %d\n", len(newAchievements), applicantID)
+
+			existingAch, _ := uc.repo.ListAchievements(ctx, applicantID, "")
+			
+			for _, ach := range newAchievements {
+				title, _ := ach["achievement_title"].(string)
+				company, _ := ach["company_name"].(string)
+				dateStr, _ := ach["date_received"].(string)
+				
+				receivedDate := parseTimeSafe(dateStr)
+
+				isDuplicate := false
+				cleanNewTitle := normalizeForDedupe(title)
+				cleanNewCompany := normalizeForDedupe(company)
+
+				for _, ea := range existingAch {
+					if normalizeForDedupe(ea.AchievementTitle) == cleanNewTitle && 
+					   normalizeForDedupe(ea.Company) == cleanNewCompany && 
+					   (ea.DateReceived.Equal(receivedDate) || (ea.DateReceived.Year() == receivedDate.Year() && ea.DateReceived.Month() == receivedDate.Month())) {
+						isDuplicate = true
+						break
+					}
+				}
+
+				if !isDuplicate {
+					aData := entity.AchievementData{
+						ApplicantID:      applicantID,
+						DocumentID:       docIDRef,
+						AchievementType:  "", // Placeholder or extract if needed
+						AchievementTitle: title,
+						Company:          company,
+						DateReceived:     receivedDate,
+						Source:           "model",
+						Version:          1,
+					}
+					if err := uc.repo.StoreAchievement(ctx, aData); err != nil {
+						fmt.Printf("[USECASE] ❌ Error storing achievement: %v\n", err)
+					} else {
+						fmt.Printf("[USECASE] ✅ Stored achievement: %s from %s\n", title, company)
+					}
+				} else {
+					fmt.Printf("[USECASE] ⏭️ Skipped duplicate achievement: %s from %s (Date: %s)\n", title, company, dateStr)
 				}
 			}
 		}
@@ -516,19 +774,57 @@ func (uc *ApplicantUseCase) ProcessAIResult(ctx context.Context, applicantID int
 	return uc.repo.UpdateDocumentStatus(ctx, documentID, "completed")
 }
 
+func (uc *ApplicantUseCase) DeleteDocument(ctx context.Context, applicantID int64, documentID int64) error {
+	// 1. Get document metadata to get storage path
+	doc, err := uc.repo.GetDocumentByID(ctx, documentID)
+	if err != nil {
+		return fmt.Errorf("UseCase - DeleteDocument - repo.GetDocumentByID: %w", err)
+	}
+
+	if doc.ApplicantID != applicantID {
+		return fmt.Errorf("UseCase - DeleteDocument - document %d does not belong to applicant %d", documentID, applicantID)
+	}
+
+	// 2. Remove from MinIO
+	err = uc.s3.DeleteFile(ctx, doc.StoragePath)
+	if err != nil {
+		fmt.Printf("[USECASE] Warning: failed to delete file from S3: %v\n", err)
+		// We continue to delete from DB even if S3 fails (orphan file is better than stale data)
+	}
+
+	// 3. Delete extracted data from all tables
+	// We call it multiple times for different categories that might be associated with this document
+	categories := []string{"passport", "resume", "diploma", "education", "recommendation", "achievement", "language", "motivation", "work", "prof_development", "transcript", "second_diploma", "certification"}
+	for _, cat := range categories {
+		err = uc.repo.DeleteDataByDocumentID(ctx, cat, documentID)
+		if err != nil {
+			fmt.Printf("[USECASE] Warning: failed to delete extracted data for category %s: %v\n", cat, err)
+		}
+	}
+
+	// 4. Delete the document record itself
+	err = uc.repo.DeleteDocument(ctx, documentID)
+	if err != nil {
+		return fmt.Errorf("UseCase - DeleteDocument - repo.DeleteDocument: %w", err)
+	}
+
+	fmt.Printf("[USECASE] ✅ Document %d and its data deleted for applicant %d\n", documentID, applicantID)
+	return nil
+}
+
 func (uc *ApplicantUseCase) DeleteApplicantData(ctx context.Context, applicantID int64, category string, dataID int64) error {
 	switch category {
-	case "work":
-		return uc.repo.DeleteWorkExperience(ctx, dataID)
-	case "recommendation":
-		return uc.repo.DeleteRecommendation(ctx, dataID)
-	case "achievement":
-		return uc.repo.DeleteAchievement(ctx, dataID)
-	case "language":
-		return uc.repo.DeleteLanguageTraining(ctx, dataID)
-	default:
-		return fmt.Errorf("UseCase - DeleteApplicantData - unsupported category: %s", category)
-	}
+		case "work", "prof_development":
+			return uc.repo.DeleteWorkExperience(ctx, dataID)
+		case "recommendation":
+			return uc.repo.DeleteRecommendation(ctx, dataID)
+		case "achievement", "certification":
+			return uc.repo.DeleteAchievement(ctx, dataID)
+		case "language":
+			return uc.repo.DeleteLanguageTraining(ctx, dataID)
+		default:
+			return fmt.Errorf("UseCase - DeleteApplicantData - unsupported category: %s", category)
+		}
 }
 
 func (uc *ApplicantUseCase) UpdateApplicantData(ctx context.Context, applicantID int64, category string, rawData map[string]interface{}) error {
@@ -575,7 +871,7 @@ func (uc *ApplicantUseCase) UpdateApplicantData(ctx context.Context, applicantID
 	}
 
 	switch category {
-	case "passport":
+	case "passport", "resume":
 		latest, err := uc.repo.GetLatestIdentification(ctx, applicantID)
 		if err != nil {
 			return err
@@ -654,7 +950,7 @@ func (uc *ApplicantUseCase) UpdateApplicantData(ctx context.Context, applicantID
 		
 		return uc.repo.UpdateMotivation(ctx, latest)
 
-	case "work", "recommendation", "achievement":
+	case "work", "prof_development", "recommendation", "achievement":
 		recordsRaw, ok := rawData["records"].([]interface{})
 		if !ok {
 			return fmt.Errorf("UseCase - UpdateApplicantData - records field is missing or invalid for category %s", category)
@@ -670,9 +966,8 @@ func (uc *ApplicantUseCase) UpdateApplicantData(ctx context.Context, applicantID
 			if id == 0 {
 				continue
 			}
-
 			switch category {
-			case "work":
+			case "work", "prof_development":
 				startDate := parseTime(m["start_date"])
 				endDate := parseTime(m["end_date"])
 				var endDatePtr *time.Time
@@ -688,6 +983,7 @@ func (uc *ApplicantUseCase) UpdateApplicantData(ctx context.Context, applicantID
 					EndDate:     endDatePtr,
 					Country:     getString(m, "country"),
 					City:        getString(m, "city"),
+					RecordType:  getString(m, "record_type"),
 					Source:      operatorInfo,
 				}
 				_ = uc.repo.UpdateWorkExperience(ctx, wExp)
@@ -703,7 +999,7 @@ func (uc *ApplicantUseCase) UpdateApplicantData(ctx context.Context, applicantID
 				}
 				_ = uc.repo.UpdateRecommendation(ctx, rec)
 
-			case "achievement":
+			case "achievement", "certification":
 				date := parseTime(m["date_received"])
 				ach := entity.AchievementData{
 					ID:               id,
@@ -711,10 +1007,23 @@ func (uc *ApplicantUseCase) UpdateApplicantData(ctx context.Context, applicantID
 					Description:      getString(m, "description"),
 					DateReceived:     date,
 					AchievementType:  getString(m, "achievement_type"),
-					Company:          getString(m, "company"),
+					Company:          getString(m, "company_name"),
 					Source:           operatorInfo,
 				}
 				_ = uc.repo.UpdateAchievement(ctx, ach)
+			
+			case "second_diploma":
+				gradDate := parseTime(m["graduation_date"])
+				edu := entity.EducationData{
+					ID:                  id,
+					InstitutionName:     getString(m, "institution_name"),
+					DegreeTitle:         getString(m, "degree_title"),
+					Major:               getString(m, "major"),
+					GraduationDate:      gradDate,
+					DiplomaSerialNumber: getString(m, "diploma_serial_number"),
+					Source:              operatorInfo,
+				}
+				_ = uc.repo.UpdateEducation(ctx, edu)
 			}
 		}
 		return nil
@@ -740,7 +1049,6 @@ func (uc *ApplicantUseCase) ViewDocument(ctx context.Context, applicantID int64,
 	if doc.FileType == "passport" || doc.FileType == "diploma" {
 		contentType = "application/pdf"
 	}
-	// Naive extension check
 	if len(doc.FileName) > 4 && doc.FileName[len(doc.FileName)-4:] == ".jpg" {
 		contentType = "image/jpeg"
 	} else if len(doc.FileName) > 4 && doc.FileName[len(doc.FileName)-4:] == ".png" {
@@ -804,66 +1112,175 @@ func getStringWithFallback(m map[string]interface{}, key string, fallback string
 	return fallback
 }
 
-func (uc *ApplicantUseCase) SaveExpertEvaluation(ctx context.Context, applicantID int64, expertID int64, userID int64, userName string, role string, category string, score int, comment string) error {
-	// userID - who is performing the action
-	// expertID - for which expert slot we are saving/overriding
-	
+func (uc *ApplicantUseCase) GetEvaluationCriteria(ctx context.Context) ([]entity.EvaluationCriteria, error) {
+	return uc.repo.GetCriteria(ctx)
+}
+
+func (uc *ApplicantUseCase) SaveExpertEvaluation(ctx context.Context, applicantID int64, expertID string, userID string, userName string, role string, evaluations []entity.ExpertEvaluation, complete bool) error {
 	isAdmin := role == "admin"
 	
-	// If it's an expert, they can only save for themselves
+	// 1. If it's an expert, they can only save for themselves
 	if !isAdmin && expertID != userID {
 		return fmt.Errorf("experts can only submit their own evaluations")
 	}
 
-	// 1. Check if the target expertID is actually an assigned expert
+	// 2. Check if the target expertID is actually an assigned expert
 	_, err := uc.repo.GetExpertSlotByUserID(ctx, expertID)
 	if err != nil && !isAdmin {
 		return fmt.Errorf("target user is not an assigned expert")
 	}
 
-	// 2. Determine source info
-	var sourceInfo string
-	if isAdmin {
-		sourceInfo = fmt.Sprintf("админ (%s)", userName)
-	} else {
-		sourceInfo = fmt.Sprintf("эксперт (%s)", userName)
-	}
-
-	// 3. Try to get existing evaluation
-	eval, err := uc.repo.GetEvaluation(ctx, applicantID, expertID, category)
+	// 3. Check for immutability: if any existing score is COMPLETED
+	existingEvals, err := uc.repo.ListEvaluations(ctx, applicantID)
 	if err == nil {
-		// Update existing
-		eval.Score = score
-		eval.Comment = comment
-		eval.UpdatedByID = userID
-		eval.IsAdminOverride = isAdmin
-		eval.SourceInfo = sourceInfo
-		
-		return uc.repo.UpdateEvaluation(ctx, eval)
+		for _, e := range existingEvals {
+			if e.ExpertID == expertID && e.Status == entity.EvaluationStatusCompleted && !isAdmin {
+				return entity.ErrEvaluationImmutable
+			}
+		}
 	}
 
-	// 4. Create new if not exists
-	newEval := entity.ExpertEvaluation{
-		ApplicantID:     applicantID,
-		ExpertID:        expertID,
-		Category:        category,
-		Score:           score,
-		Comment:         comment,
-		UpdatedByID:     userID,
-		IsAdminOverride: isAdmin,
-		SourceInfo:      sourceInfo,
+	// 4. Validate scores against criteria
+	criteria, err := uc.repo.GetCriteria(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch criteria: %w", err)
+	}
+	criteriaMap := make(map[string]entity.EvaluationCriteria)
+	for _, c := range criteria {
+		criteriaMap[c.Code] = c
 	}
 
-	return uc.repo.StoreEvaluation(ctx, newEval)
+	status := entity.EvaluationStatusDraft
+	if complete {
+		status = entity.EvaluationStatusCompleted
+	}
+
+	sourceInfo := fmt.Sprintf("%s (%s)", role, userName)
+
+	// 5. Prepare batch
+	toSave := make([]entity.ExpertEvaluation, 0, len(evaluations))
+	for _, e := range evaluations {
+		c, ok := criteriaMap[e.Category]
+		if !ok {
+			return fmt.Errorf("unknown criteria: %s", e.Category)
+		}
+		if e.Score > c.MaxScore || e.Score < 0 {
+			return entity.ErrScoreExceedsMax
+		}
+
+		toSave = append(toSave, entity.ExpertEvaluation{
+			ApplicantID:     applicantID,
+			ExpertID:        expertID,
+			Category:        e.Category,
+			Score:           e.Score,
+			Comment:         e.Comment,
+			Status:          status,
+			UpdatedByID:     userID,
+			IsAdminOverride: isAdmin,
+			SourceInfo:      sourceInfo,
+		})
+	}
+
+	// 6. Save batch
+	if err := uc.repo.SaveEvaluationBatch(ctx, toSave); err != nil {
+		return err
+	}
+
+	// 7. If completed, trigger aggregation
+	if complete {
+		return uc.triggerAggregation(ctx, applicantID)
+	}
+
+	return nil
 }
 
-func (uc *ApplicantUseCase) ListExpertEvaluations(ctx context.Context, applicantID int64) ([]entity.ExpertEvaluation, error) {
-	return uc.repo.ListEvaluations(ctx, applicantID)
+func (uc *ApplicantUseCase) triggerAggregation(ctx context.Context, applicantID int64) error {
+	// Check if all 3 experts (slots) have completed their evaluations
+	slots, err := uc.repo.GetExpertSlots(ctx)
+	if err != nil {
+		return err
+	}
+
+	evals, err := uc.repo.ListEvaluations(ctx, applicantID)
+	if err != nil {
+		return err
+	}
+
+	completedExperts := make(map[string]bool)
+	for _, e := range evals {
+		if e.Status == entity.EvaluationStatusCompleted {
+			completedExperts[e.ExpertID] = true
+		}
+	}
+
+	assignedExpertsCount := 0
+	for _, s := range slots {
+		if s.UserID != "" {
+			assignedExpertsCount++
+		}
+	}
+
+	// If all assigned experts (max 3) are done, or at least 1 if only 1 assigned (simplified)
+	// The requirement says "3 independent experts", so we should check for completion of all assigned.
+	// We'll proceed if all assigned slots are completed.
+	allDone := true
+	for _, s := range slots {
+		if s.UserID != "" && !completedExperts[s.UserID] {
+			allDone = false
+			break
+		}
+	}
+
+	if allDone && assignedExpertsCount > 0 {
+		score, err := uc.repo.GetAggregatedScore(ctx, applicantID)
+		if err != nil {
+			return err
+		}
+		return uc.repo.UpdateApplicantRanking(ctx, applicantID, score, "EVALUATED")
+	}
+
+	return uc.repo.UpdateApplicantRanking(ctx, applicantID, 0, "IN_PROGRESS")
 }
 
-func (uc *ApplicantUseCase) AssignExpertSlot(ctx context.Context, userID int64, slotNumber int, requesterRole string) error {
-	if requesterRole != "admin" {
-		return fmt.Errorf("only admins can assign expert slots")
+func (uc *ApplicantUseCase) ListExpertEvaluations(ctx context.Context, applicantID int64, currentUserID string) ([]entity.ExpertEvaluation, error) {
+	evals, err := uc.repo.ListEvaluations(ctx, applicantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// "Blind Grading" logic:
+	// If the current user (expert) hasn't completed their evaluation,
+	// mask scores of other experts.
+	
+	currentUserCompleted := false
+	for _, e := range evals {
+		if e.ExpertID == currentUserID && e.Status == entity.EvaluationStatusCompleted {
+			currentUserCompleted = true
+			break
+		}
+	}
+
+	// If not completed, mask others
+	if !currentUserCompleted {
+		for i := range evals {
+			if evals[i].ExpertID != currentUserID {
+				evals[i].Score = -1 // Masked
+				evals[i].Comment = "Score hidden until you complete your evaluation"
+			}
+		}
+	}
+
+	return evals, nil
+}
+
+func (uc *ApplicantUseCase) AssignExpertSlot(ctx context.Context, userID string, slotNumber int, requesterRole string) error {
+	if requesterRole != "admin" && requesterRole != "manager" {
+		return fmt.Errorf("only admins and managers can assign expert slots")
+	}
+
+	fmt.Printf("[DEBUG] AssignExpertSlot: userID=%s, slotNumber=%d, role=%s\n", userID, slotNumber, requesterRole)
+	if userID == "" || userID == "0" {
+		return uc.repo.RemoveExpertSlot(ctx, slotNumber)
 	}
 
 	// Double check max experts limit
@@ -887,6 +1304,10 @@ func (uc *ApplicantUseCase) AssignExpertSlot(ctx context.Context, userID int64, 
 
 func (uc *ApplicantUseCase) GetExpertSlots(ctx context.Context) ([]entity.ExpertSlot, error) {
 	return uc.repo.GetExpertSlots(ctx)
+}
+
+func (uc *ApplicantUseCase) ListExperts(ctx context.Context) ([]entity.User, error) {
+	return uc.repo.GetUsersByRoles(ctx, []string{"expert"})
 }
 
 func getInt(m map[string]interface{}, key string, def int) int {
@@ -919,4 +1340,12 @@ func getFloat(m map[string]interface{}, key string, def float64) float64 {
 		}
 	}
 	return def
+}
+
+func getKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

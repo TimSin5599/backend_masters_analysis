@@ -90,6 +90,7 @@ type WorkExperience struct {
 	CompanyName string     `json:"company_name"`
 	StartDate   time.Time  `json:"start_date"`
 	EndDate     *time.Time `json:"end_date,omitempty"`
+	RecordType  string     `json:"record_type,omitempty"`
 	Source      string     `json:"source"`
 	Version     int        `json:"version"`
 }
@@ -168,22 +169,56 @@ type DataVersion struct {
 	CreatedAt     time.Time   `json:"created_at"`
 }
 
+const (
+	EvaluationStatusDraft     = "DRAFT"
+	EvaluationStatusCompleted = "COMPLETED"
+
+	CriteriaTypeBase        = "BASE"
+	CriteriaTypeAlternative = "ALTERNATIVE"
+
+	CriteriaCodeEnglish = "ENGLISH_LANG"
+)
+
 type ExpertEvaluation struct {
 	ID              int64     `json:"id"`
 	ApplicantID     int64     `json:"applicant_id"`
-	ExpertID        int64     `json:"expert_id"`
+	ExpertID        string    `json:"expert_id"`
 	Category        string    `json:"category"`
 	Score           int       `json:"score"`
 	Comment         string    `json:"comment"`
-	UpdatedByID     int64     `json:"updated_by_id"`
+	Status          string    `json:"status"` // DRAFT, COMPLETED
+	UpdatedByID     string    `json:"updated_by_id"`
 	IsAdminOverride bool      `json:"is_admin_override"`
 	SourceInfo      string    `json:"source_info"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+type EvaluationCriteria struct {
+	Code     string `json:"code"`
+	Title    string `json:"title"`
+	MaxScore int    `json:"max_score"`
+	Type     string `json:"type"` // BASE, ALTERNATIVE
+}
+
+type AggregatedEvaluation struct {
+	ApplicantID  int64   `json:"applicant_id"`
+	AverageScore float64 `json:"average_score"`
+	Status       string  `json:"status"`
+}
+
 type ExpertSlot struct {
-	UserID     int64     `json:"user_id"`
+	UserID     string    `json:"user_id"`
 	SlotNumber int       `json:"slot_number"`
+	FirstName  string    `json:"first_name,omitempty"`
+	LastName   string    `json:"last_name,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+type User struct {
+	ID        string `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
 }

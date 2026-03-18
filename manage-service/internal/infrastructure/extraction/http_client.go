@@ -41,7 +41,7 @@ func (c *HTTPClient) TriggerExtraction(ctx context.Context, doc entity.Document,
 	}
 
 	// Add category
-	// doc.FileType holds "passport", "diploma", etc. (mapped in UseCase)
+	// doc.FileType holds "personal_data", "diploma", etc.
 	err = writer.WriteField("category", doc.FileType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write category field: %w", err)

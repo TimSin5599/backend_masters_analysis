@@ -41,6 +41,42 @@ definitions:
       updated_at:
         type: string
     type: object
+  entity.ExpertEvaluation:
+    properties:
+      applicant_id:
+        type: integer
+      category:
+        type: string
+      comment:
+        type: string
+      created_at:
+        type: string
+      expert_id:
+        type: string
+      id:
+        type: integer
+      is_admin_override:
+        type: boolean
+      score:
+        type: integer
+      source_info:
+        type: string
+      updated_at:
+        type: string
+      updated_by_id:
+        type: string
+    type: object
+  entity.ExpertSlot:
+    properties:
+      created_at:
+        type: string
+      slot_number:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+    type: object
   entity.Program:
     properties:
       created_at:
@@ -56,6 +92,30 @@ definitions:
       year:
         type: integer
     type: object
+  entity.User:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      role:
+        type: string
+    type: object
+  v1.assignSlotRequest:
+    properties:
+      slot_number:
+        type: integer
+      user_id:
+        type: string
+      user_role:
+        type: string
+    required:
+    - slot_number
+    - user_id
+    - user_role
+    type: object
   v1.createApplicantRequest:
     properties:
       first_name:
@@ -70,6 +130,29 @@ definitions:
     - first_name
     - last_name
     - program_id
+    type: object
+  v1.expertEvaluationRequest:
+    properties:
+      category:
+        type: string
+      comment:
+        type: string
+      expert_id:
+        type: string
+      score:
+        type: integer
+      user_id:
+        type: string
+      user_name:
+        type: string
+      user_role:
+        type: string
+    required:
+    - category
+    - score
+    - user_id
+    - user_name
+    - user_role
     type: object
 info:
   contact: {}
@@ -131,6 +214,41 @@ paths:
               type: string
             type: object
       summary: Создать абитуриента
+      tags:
+      - applicants
+  /v1/applicants/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Полностью удаляет абитуриента и связанные с ним данные из системы
+      parameters:
+      - description: ID абитуриента
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Удаление абитуриента
       tags:
       - applicants
   /v1/applicants/{id}/data:
@@ -382,6 +500,56 @@ paths:
       summary: Просмотр документа абитуриента
       tags:
       - applicants
+  /v1/applicants/{id}/evaluations:
+    get:
+      description: Возвращает все оценки для абитуриента
+      parameters:
+      - description: ID абитуриента
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/entity.ExpertEvaluation'
+            type: array
+      summary: Список оценок экспертов
+      tags:
+      - experts
+    post:
+      consumes:
+      - application/json
+      description: Сохраняет или обновляет оценку за категорию документа. Лимит 3
+        эксперта на систему.
+      parameters:
+      - description: ID абитуриента
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Данные оценки
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/v1.expertEvaluationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Сохранить оценку эксперта
+      tags:
+      - experts
   /v1/applicants/{id}/queue-status:
     get:
       description: Возвращает массив статусов очереди для абитуриента
@@ -528,6 +696,59 @@ paths:
       summary: Просмотр документа по ID
       tags:
       - documents
+  /v1/experts:
+    get:
+      description: Возвращает список всех пользователей с ролью эксперта или наблюдателя
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/entity.User'
+            type: array
+      summary: Список экспертов
+      tags:
+      - experts
+  /v1/experts/slots:
+    get:
+      description: Возвращает 3 слота экспертов и назначенных на них пользователей
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/entity.ExpertSlot'
+            type: array
+      summary: Список слотов экспертов
+      tags:
+      - experts
+    post:
+      consumes:
+      - application/json
+      description: Закрепляет пользователя за слотом Эксперт 1, 2 или 3.
+      parameters:
+      - description: Данные слота
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/v1.assignSlotRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Назначить эксперта на слот
+      tags:
+      - experts
   /v1/programs:
     get:
       description: Получаем список образовательных программ

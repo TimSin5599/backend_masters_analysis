@@ -175,11 +175,14 @@ func (c *Consumer) processMessage(d amqp.Delivery) {
 		"status":   "extracting",
 		"progress": 50,
 	})
+	fmt.Printf("[CONSUMER] Triggering extraction for applicant %d, category %s, file %s\n", task.ApplicantID, task.DocumentCategory, task.FilePath)
 	rawData, err := c.extractor.TriggerExtraction(backgroundCtx, targetDoc, content)
 	if err != nil {
+		fmt.Printf("[CONSUMER] ❌ Extraction failed for applicant %d: %v\n", task.ApplicantID, err)
 		c.failTask(task.ApplicantID, task.ID, d, fmt.Errorf("AI extraction failed: %w", err))
 		return
 	}
+	fmt.Printf("[CONSUMER] ✅ Extraction success for applicant %d. Raw data keys: %v\n", task.ApplicantID, getKeys(rawData))
 
 	// Save results via UseCase
 	c.hub.BroadcastStatus(task.ApplicantID, map[string]interface{}{
@@ -220,4 +223,12 @@ func (c *Consumer) failTask(applicantID int64, taskID string, d amqp.Delivery, e
 	
 	// Reject but don't requeue (to avoid infinite loops on broken documents)
 	d.Nack(false, false)
+}
+
+func getKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

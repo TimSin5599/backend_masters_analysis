@@ -65,3 +65,15 @@ func (p *MinioProvider) GetFile(ctx context.Context, key string) ([]byte, error)
 	
 	return buf.Bytes(), nil
 }
+
+func (p *MinioProvider) DeleteFile(ctx context.Context, key string) error {
+	fmt.Printf("[S3] Deleting file %s from bucket %s\n", key, p.bucket)
+	
+	err := p.client.RemoveObject(ctx, p.bucket, key, minio.RemoveObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to remove object from minio: %w", err)
+	}
+	
+	fmt.Printf("[S3] ✅ Delete success: %s\n", key)
+	return nil
+}
