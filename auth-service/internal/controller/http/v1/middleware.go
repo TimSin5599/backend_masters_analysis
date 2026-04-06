@@ -1,8 +1,6 @@
 package v1
 
 import (
-	"auth-service/internal/entity"
-	"auth-service/internal/usecase"
 	"context"
 	"fmt"
 	"net/http"
@@ -10,17 +8,49 @@ import (
 	"sync"
 	"time"
 
+	"auth-service/internal/domain/entity"
+	"auth-service/internal/usecase"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var (
-	lastOnlineUpdates = make(map[string]time.Time)
-	mu                sync.Mutex
-)
+type Middleware struct {
+    userUC           usecase.User
+    secretKey        string
+    lastOnlineMu     sync.Mutex
+    lastOnlineUpdates map[string]time.Time
+}
+
+func NewMiddleware(secretKey string, userUC usecase.User) *Middleware {
+    return &Middleware{
+        secretKey:         secretKey,
+        userUC:            userUC,
+        lastOnlineUpdates: make(map[string]time.Time),
+    }
+}
+
+// LoggingMiddleware — middleware для подробного логирования всех HTTP запросов.
+func (m *Middleware) LoggingMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		startTime := time.Now()
+		fmt.Printf("\n[ЗАПРОС] %s | Метод: %s | Путь: %s | IP: %s\n",
+			startTime.Format("2006-01-02 15:04:05"),
+			c.Request.Method,
+			c.Request.URL.Path,
+			c.ClientIP(),
+		)
+		c.Next()
+		fmt.Printf("[ОТВЕТ] Статус: %d | Время: %v | Путь: %s\n",
+			c.Writer.Status(),
+			time.Since(startTime),
+			c.Request.URL.Path,
+		)
+	}
+}
 
 // JWTMiddleware создает middleware для проверки JWT токена
-func JWTMiddleware(secretKey string, authUC usecase.Auth) gin.HandlerFunc {
+func (m *Middleware) JWTMiddleware(secretKey string, userUC usecase.User) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		fmt.Printf("\n[JWT_MIDDLEWARE] Проверка авторизации для %s %s\n", c.Request.Method, c.Request.URL.Path)
 
@@ -91,15 +121,15 @@ func JWTMiddleware(secretKey string, authUC usecase.Auth) gin.HandlerFunc {
 		fmt.Printf("[JWT_MIDDLEWARE] ✅ Токен валиден | UserID: %s\n", userID)
 
 		// Throttled last_online update
-		mu.Lock()
-		lastUpdate, exists := lastOnlineUpdates[userID]
+		m.lastOnlineMu.Lock()
+		lastUpdate, exists := m.lastOnlineUpdates[userID]
 		if !exists || time.Since(lastUpdate) > 5*time.Minute {
 			go func(uid string) {
-				_ = authUC.UpdateLastOnline(context.Background(), uid)
+				_ = userUC.UpdateLastOnline(context.Background(), uid)
 			}(userID)
-			lastOnlineUpdates[userID] = time.Now()
+			m.lastOnlineUpdates[userID] = time.Now()
 		}
-		mu.Unlock()
+		m.lastOnlineMu.Unlock()
 
 		// Сохраняем userID в контексте для дальнейшего использования
 		c.Set("userID", userID)
@@ -110,7 +140,7 @@ func JWTMiddleware(secretKey string, authUC usecase.Auth) gin.HandlerFunc {
 }
 
 // AdminMiddleware проверяет наличие роли admin у текущего пользователя
-func AdminMiddleware() gin.HandlerFunc {
+func (m *Middleware) AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		fmt.Printf("\n[ADMIN_MIDDLEWARE] Проверка прав администратора для %s %s\n", c.Request.Method, c.Request.URL.Path)
 

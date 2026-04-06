@@ -2,21 +2,24 @@ package config
 
 import (
 	"fmt"
+
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
 type (
 	Config struct {
-		App  `yaml:"app"`
-		HTTP `yaml:"http"`
-		Log  `yaml:"logger"`
-		PG   `yaml:"postgres"`
-		JWT  `yaml:"jwt"`
+		App   `yaml:"app"`
+		HTTP  `yaml:"http"`
+		Log   `yaml:"logger"`
+		PG    `yaml:"postgres"`
+		JWT   `yaml:"jwt"`
+		Redis `yaml:"redis"`
+		CORS  `yaml:"cors"`
 	}
 
 	App struct {
 		Name    string `env-required:"true" yaml:"name"    env:"APP_NAME"`
-		Version string `env. -required:"true" yaml:"version" env:"APP_VERSION"`
+		Version string `env-required:"true" yaml:"version" env:"APP_VERSION"`
 	}
 
 	HTTP struct {
@@ -34,6 +37,14 @@ type (
 
 	JWT struct {
 		SignKey string `env-required:"true" yaml:"sign_key" env:"JWT_SIGN_KEY"`
+	}
+
+	Redis struct {
+		URL string `env-required:"true" yaml:"url" env:"REDIS_URL"`
+	}
+
+	CORS struct {
+		AllowOrigin string `yaml:"allow_origin" env:"CORS_ALLOW_ORIGIN"`
 	}
 )
 

@@ -1,41 +1,6 @@
+basePath: /
 definitions:
-  entity.User:
-    properties:
-      avatarPath:
-        type: string
-      created_at:
-        type: string
-      email:
-        type: string
-      firstName:
-        type: string
-      id:
-        type: string
-      last_online:
-        type: string
-      lastName:
-        type: string
-      password:
-        description: stored as hash
-        type: string
-      phone:
-        type: string
-      role:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  v1.changePasswordRequest:
-    properties:
-      newPassword:
-        type: string
-      oldPassword:
-        type: string
-    required:
-    - newPassword
-    - oldPassword
-    type: object
-  v1.loginRequest:
+  handlers.loginRequest:
     properties:
       email:
         type: string
@@ -45,55 +10,16 @@ definitions:
     - email
     - password
     type: object
-  v1.registerRequest:
-    properties:
-      email:
-        type: string
-      password:
-        type: string
-      role:
-        type: string
-    required:
-    - email
-    - password
-    - role
-    type: object
+host: localhost:8081
 info:
   contact: {}
+  description: Authentication service
+  title: Auth Service API
+  version: "1.0"
 paths:
   /v1/auth/change-password:
     post:
-      consumes:
-      - application/json
-      description: Изменение пароля текущего пользователя
-      parameters:
-      - description: Старый и новый пароли
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/v1.changePasswordRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
+      responses: {}
       security:
       - ApiKeyAuth: []
       summary: Сменить пароль
@@ -101,28 +27,12 @@ paths:
       - auth
   /v1/auth/me:
     get:
-      consumes:
-      - application/json
       description: Получение информации о текущем авторизованном пользователе
-      produces:
-      - application/json
       responses:
         "200":
           description: OK
           schema:
             additionalProperties: true
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
             type: object
       security:
       - ApiKeyAuth: []
@@ -133,14 +43,15 @@ paths:
     post:
       consumes:
       - application/json
-      description: Вход в систему и получение JWT токена
+      description: Вход в систему. Возвращает access_token в JSON и устанавливает
+        refresh_token в httpOnly cookie.
       parameters:
       - description: Данные для входа
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/v1.loginRequest'
+          $ref: '#/definitions/handlers.loginRequest'
       produces:
       - application/json
       responses:
@@ -165,27 +76,30 @@ paths:
       summary: Авторизация
       tags:
       - auth
-  /v1/register:
+  /v1/logout:
     post:
-      consumes:
-      - application/json
-      description: Регистрация нового пользователя (только для администраторов)
-      parameters:
-      - description: Данные для регистрации
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/v1.registerRequest'
+      description: Инвалидирует refresh токен и очищает cookie.
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/entity.User'
-        "400":
-          description: Bad Request
+            additionalProperties:
+              type: string
+            type: object
+      summary: Выход
+      tags:
+      - auth
+  /v1/refresh:
+    post:
+      description: Обновляет access токен по refresh токену из httpOnly cookie. Реализует
+        ротацию refresh токена.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
           schema:
             additionalProperties:
               type: string
@@ -196,41 +110,16 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "403":
-          description: Forbidden
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Регистрация
+      summary: Обновить токены
       tags:
       - auth
   /v1/users:
     get:
-      consumes:
-      - application/json
-      description: Получение списка всех пользователей
-      produces:
-      - application/json
       responses:
         "200":
           description: OK
           schema:
             additionalProperties: true
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
             type: object
       security:
       - ApiKeyAuth: []
@@ -238,35 +127,11 @@ paths:
       tags:
       - users
     post:
-      consumes:
-      - application/json
-      description: Создание нового пользователя администратором
-      parameters:
-      - description: Данные пользователя
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/entity.User'
-      produces:
-      - application/json
       responses:
         "201":
           description: Created
           schema:
             additionalProperties: true
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
             type: object
       security:
       - ApiKeyAuth: []
@@ -274,9 +139,14 @@ paths:
       tags:
       - users
   /v1/users/{id}:
+    delete:
+      responses: {}
+      security:
+      - ApiKeyAuth: []
+      summary: Удаление пользователя
+      tags:
+      - auth
     get:
-      consumes:
-      - application/json
       description: Получение информации о пользователе по его ID
       parameters:
       - description: ID пользователя
@@ -284,25 +154,11 @@ paths:
         name: id
         required: true
         type: string
-      produces:
-      - application/json
       responses:
         "200":
           description: OK
           schema:
             additionalProperties: true
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
             type: object
       security:
       - ApiKeyAuth: []
@@ -310,45 +166,16 @@ paths:
       tags:
       - users
     put:
-      consumes:
-      - application/json
-      description: Обновление данных пользователя по ID
-      parameters:
-      - description: ID пользователя
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Новые данные пользователя
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/entity.User'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
+      responses: {}
       security:
       - ApiKeyAuth: []
       summary: Обновить пользователя
       tags:
       - users
+securityDefinitions:
+  BearerAuth:
+    description: 'Введи токен в формате: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

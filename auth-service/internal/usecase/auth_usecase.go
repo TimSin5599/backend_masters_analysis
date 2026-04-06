@@ -1,229 +1,161 @@
 package usecase
 
 import (
-	"auth-service/internal/entity"
 	"context"
-	"fmt"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	jwt "auth-service/pkg/jwt"
+
+	"auth-service/internal/domain"
+	"auth-service/internal/domain/entity"
+
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthUseCase -
+// AuthUseCase реализует бизнес-логику аутентификации.
 type AuthUseCase struct {
-	repo       UserRepo
-	signKey    []byte
-	tokenTTL   time.Duration
+	repo      UserRepo
+	tokenRepo TokenRepo
+	signKey   string
 }
 
-// New -
-func New(r UserRepo, signKey string, tokenTTL time.Duration) *AuthUseCase {
+// New создаёт новый AuthUseCase.
+func NewAuth(r UserRepo, tokenRepo TokenRepo, signKey string) *AuthUseCase {
 	return &AuthUseCase{
-		repo:       r,
-		signKey:    []byte(signKey),
-		tokenTTL:   tokenTTL,
+		repo:      r,
+		tokenRepo: tokenRepo,
+		signKey:   signKey,
 	}
 }
 
-// Register -
+// Register создаёт нового пользователя.
 func (uc *AuthUseCase) Register(ctx context.Context, email, password, role string) (entity.User, error) {
-	fmt.Printf("[USECASE] Регистрация - начало процесса для email: %s\n", email)
-
-	// 0. Validate role
 	if !entity.IsValidRole(role) {
-		fmt.Printf("[USECASE] ❌ Невалидная роль: %s\n", role)
-		return entity.User{}, fmt.Errorf("invalid role: %s", role)
+		return entity.User{}, domain.ErrInvalidRole
 	}
 
-	// 1. Check if user exists
-	fmt.Printf("[USECASE] Шаг 1: Проверка существования пользователя...\n")
 	_, err := uc.repo.GetByEmail(ctx, email)
 	if err == nil {
-		fmt.Printf("[USECASE] ❌ Пользователь с email %s уже существует\n", email)
-		return entity.User{}, fmt.Errorf("user already exists")
+		return entity.User{}, domain.ErrUserAlreadyExists
 	}
-	fmt.Printf("[USECASE] ✓ Пользователь не найден, продолжаем регистрацию\n")
 
-	// 2. Hash password
-	fmt.Printf("[USECASE] Шаг 2: Хеширование пароля...\n")
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		fmt.Printf("[USECASE] ❌ Ошибка хеширования пароля: %v\n", err)
-		return entity.User{}, fmt.Errorf("AuthUseCase - Register - bcrypt.GenerateFromPassword: %w", err)
+		return entity.User{}, domain.ErrPasswordChange
 	}
-	fmt.Printf("[USECASE] ✓ Пароль успешно захеширован\n")
-
-	userID := uuid.New().String()
-	fmt.Printf("[USECASE] Шаг 3: Создание пользователя с ID: %s\n", userID)
 
 	user := entity.User{
-		ID:        userID,
-		Email:     email,
-		Password:  string(hashedPassword),
-		Role:      role,
+		ID:         uuid.New().String(),
+		Email:      email,
+		Password:   string(hashedPassword),
+		Role:       role,
 		LastOnline: time.Now(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
-	// 3. Store user
-	fmt.Printf("[USECASE] Шаг 4: Сохранение пользователя в базу данных...\n")
-	err = uc.repo.Store(ctx, user)
-	if err != nil {
-		fmt.Printf("[USECASE] ❌ Ошибка сохранения в БД: %v\n", err)
-		return entity.User{}, fmt.Errorf("AuthUseCase - Register - uc.repo.Store: %w", err)
+	if err = uc.repo.Store(ctx, user); err != nil {
+		return entity.User{}, domain.ErrUserAlreadyExists
 	}
-	fmt.Printf("[USECASE] ✅ Пользователь успешно сохранен в БД\n")
 
 	return user, nil
 }
 
-// CreateUser -
-func (uc *AuthUseCase) CreateUser(ctx context.Context, user entity.User) (string, error) {
-	fmt.Printf("[USECASE] CreateUser - начало процесса для email: %s\n", user.Email)
-
-	if !entity.IsValidRole(user.Role) {
-		return "", fmt.Errorf("invalid role: %s", user.Role)
-	}
-
-	_, err := uc.repo.GetByEmail(ctx, user.Email)
-	if err == nil {
-		return "", fmt.Errorf("user with email %s already exists", user.Email)
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", fmt.Errorf("failed to hash password: %w", err)
-	}
-
-	user.ID = uuid.New().String()
-	user.Password = string(hashedPassword)
-	user.LastOnline = time.Now()
-	user.CreatedAt = time.Now()
-	user.UpdatedAt = time.Now()
-
-	err = uc.repo.Store(ctx, user)
-	if err != nil {
-		return "", fmt.Errorf("failed to store user: %w", err)
-	}
-
-	fmt.Printf("[USECASE] ✅ Пользователь успешно создан | ID: %s | Email: %s\n", user.ID, user.Email)
-	return user.ID, nil
-}
-
-// Login -
-func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (string, error) {
-	fmt.Printf("[USECASE] Авторизация - начало процесса для email: %s\n", email)
-
-	fmt.Printf("[USECASE] Шаг 1: Поиск пользователя в БД...\n")
+// Login аутентифицирует пользователя и возвращает (accessToken, refreshToken).
+func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (string, string, error) {
 	user, err := uc.repo.GetByEmail(ctx, email)
 	if err != nil {
-		fmt.Printf("[USECASE] ❌ Пользователь не найден: %v\n", err)
-		return "", fmt.Errorf("AuthUseCase - Login - uc.repo.GetByEmail: %w", err)
+		return "", "", domain.ErrInvalidCredentials
 	}
-	fmt.Printf("[USECASE] ✓ Пользователь найден | ID: %s | Роль: %s\n", user.ID, user.Role)
 
-	// Check password
-	fmt.Printf("[USECASE] Шаг 2: Проверка пароля...\n")
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		return "", "", domain.ErrInvalidCredentials
+	}
+
+	accessToken, err := jwt.GenerateAccessToken(user.ID, user.Email, user.Role, uc.signKey)
 	if err != nil {
-		fmt.Printf("[USECASE] ❌ Неверный пароль\n")
-		return "", fmt.Errorf("invalid credentials")
+		return "", "", domain.ErrInvalidToken
 	}
-	fmt.Printf("[USECASE] ✓ Пароль верный\n")
 
-	// Generate Token
-	fmt.Printf("[USECASE] Шаг 3: Генерация JWT токена...\n")
-	// Calculate expiration time for logging purposes
-	expirationTimeForLog := time.Now().Add(uc.tokenTTL)
-	fmt.Printf("[USECASE] Токен будет действителен до: %s\n", expirationTimeForLog.Format("2006-01-02 15:04:05"))
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": user.ID,
-		"exp": time.Now().Add(uc.tokenTTL).Unix(),
-		"user": map[string]interface{}{
-			"email": user.Email,
-			"role":  user.Role,
-		},
-	})
-
-	tokenString, err := token.SignedString(uc.signKey)
+	refreshToken, err := jwt.GenerateRefreshToken(user.ID, uc.signKey)
 	if err != nil {
-		fmt.Printf("[USECASE] ❌ Ошибка подписи токена: %v\n", err)
-		return "", fmt.Errorf("AuthUseCase - Login - token.SignedString: %w", err)
+		return "", "", domain.ErrInvalidToken
 	}
 
-	fmt.Printf("[USECASE] ✅ JWT токен успешно создан | UserID: %s\n", user.ID)
-	return tokenString, nil
+	if err = uc.tokenRepo.StoreRefreshToken(ctx, user.ID, refreshToken); err != nil {
+		return "", "", domain.ErrTokenRotation
+	}
+
+	return accessToken, refreshToken, nil
 }
 
-// GetByID -
-func (uc *AuthUseCase) GetByID(ctx context.Context, id string) (entity.User, error) {
-	fmt.Printf("[USECASE] GetByID - получение пользователя по ID: %s\n", id)
-
-	user, err := uc.repo.GetByID(ctx, id)
+// RefreshTokens обновляет пару токенов по refresh токену (ротация).
+func (uc *AuthUseCase) RefreshTokens(ctx context.Context, refreshToken string) (string, string, error) {
+	userID, err := uc.tokenRepo.GetUserIDByRefreshToken(ctx, refreshToken)
 	if err != nil {
-		fmt.Printf("[USECASE] ❌ Ошибка получения пользователя: %v\n", err)
-		return entity.User{}, fmt.Errorf("AuthUseCase - GetByID - uc.repo.GetByID: %w", err)
+		return "", "", domain.ErrInvalidToken
 	}
 
-	fmt.Printf("[USECASE] ✅ Пользователь получен | Email: %s | Role: %s\n", user.Email, user.Role)
-	return user, nil
-}
+	// Удаляем старый токен (ротация)
+	if err = uc.tokenRepo.DeleteRefreshToken(ctx, refreshToken); err != nil {
+		return "", "", domain.ErrTokenRotation
+	}
 
-// ListUsers -
-func (uc *AuthUseCase) ListUsers(ctx context.Context) ([]entity.User, error) {
-	fmt.Printf("[USECASE] ListUsers - получение списка пользователей\n")
-	return uc.repo.List(ctx)
-}
-
-// UpdateLastOnline -
-func (uc *AuthUseCase) UpdateLastOnline(ctx context.Context, id string) error {
-	return uc.repo.UpdateLastOnline(ctx, id)
-}
-
-func (uc *AuthUseCase) UpdateUser(ctx context.Context, user entity.User) error {
-	return uc.repo.Update(ctx, user)
-}
-
-func (uc *AuthUseCase) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
-	fmt.Printf("[USECASE] ChangePassword - начало процесса для userID: %s\n", userID)
-
-	// 1. Get user
 	user, err := uc.repo.GetByID(ctx, userID)
 	if err != nil {
-		fmt.Printf("[USECASE] ❌ Пользователь не найден: %v\n", err)
-		return fmt.Errorf("user not found")
+		return "", "", domain.ErrUserNotFound
 	}
 
-	// 2. Check old password
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(oldPassword))
+	newAccessToken, err := jwt.GenerateAccessToken(user.ID, user.Email, user.Role, uc.signKey)
 	if err != nil {
-		fmt.Printf("[USECASE] ❌ Неверный старый пароль\n")
-		return fmt.Errorf("invalid old password")
+		return "", "", domain.ErrInvalidToken
 	}
 
-	// 3. Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	newRefreshToken, err := jwt.GenerateRefreshToken(user.ID, uc.signKey)
 	if err != nil {
-		fmt.Printf("[USECASE] ❌ Ошибка хеширования нового пароля: %v\n", err)
-		return fmt.Errorf("internal server error")
+		return "", "", domain.ErrInvalidToken
 	}
 
-	// 4. Update password
-	err = uc.repo.UpdatePassword(ctx, userID, string(hashedPassword))
-	if err != nil {
-		fmt.Printf("[USECASE] ❌ Ошибка обновления пароля в БД: %v\n", err)
-		return fmt.Errorf("failed to update password")
+	if err = uc.tokenRepo.StoreRefreshToken(ctx, userID, newRefreshToken); err != nil {
+		return "", "", domain.ErrTokenRotation
 	}
 
-	fmt.Printf("[USECASE] ✅ Пароль успешно изменен для userID: %s\n", userID)
+	return newAccessToken, newRefreshToken, nil
+}
+
+// Logout инвалидирует refresh токен.
+func (uc *AuthUseCase) Logout(ctx context.Context, refreshToken string) error {
+	if err := uc.tokenRepo.DeleteRefreshToken(ctx, refreshToken); err != nil {
+		return domain.ErrTokenRotation
+	}
 	return nil
 }
 
-func (uc *AuthUseCase) DeleteUser(ctx context.Context, id string) error {
-	fmt.Printf("[USECASE] DeleteUser - удаление пользователя по ID: %s\n", id)
-	return uc.repo.Delete(ctx, id)
+// ChangePassword меняет пароль и инвалидирует все refresh токены пользователя.
+func (uc *AuthUseCase) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+	user, err := uc.repo.GetByID(ctx, userID)
+	if err != nil {
+		return domain.ErrUserNotFound
+	}
+
+	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(oldPassword)); err != nil {
+		return domain.ErrInvalidCredentials
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return domain.ErrPasswordChange
+	}
+
+	if err = uc.repo.UpdatePassword(ctx, userID, string(hashedPassword)); err != nil {
+		return domain.ErrPasswordChange
+	}
+
+	// Инвалидируем все refresh токены после смены пароля
+	if err = uc.tokenRepo.DeleteAllRefreshTokens(ctx, userID); err != nil {
+		return domain.ErrTokenRotation
+	}
+
+	return nil
 }
