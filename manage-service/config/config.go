@@ -8,13 +8,15 @@ import (
 
 type (
 	Config struct {
-		App  `yaml:"app"`
-		HTTP `yaml:"http"`
-		Log  `yaml:"logger"`
-		PG   `yaml:"postgres"`
-		MinIO `yaml:"minio"`
+		App        `yaml:"app"`
+		HTTP       `yaml:"http"`
+		Log        `yaml:"logger"`
+		PG         `yaml:"postgres"`
+		MinIO      `yaml:"minio"`
 		Extraction `yaml:"extraction"`
-		RabbitMQ `yaml:"rabbitmq"`
+		RabbitMQ   `yaml:"rabbitmq"`
+		JWT        `yaml:"jwt"`
+		CORS       `yaml:"cors"`
 	}
 
 	App struct {
@@ -48,6 +50,14 @@ type (
 
 	RabbitMQ struct {
 		URL string `env-required:"true" yaml:"url" env:"RABBITMQ_URL"`
+	}
+
+	JWT struct {
+		SignKey string `env-required:"true" yaml:"sign_key" env:"JWT_SIGN_KEY"`
+	}
+
+	CORS struct {
+		AllowOrigin string `yaml:"allow_origin" env:"CORS_ALLOW_ORIGIN"`
 	}
 )
 

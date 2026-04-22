@@ -2,26 +2,18 @@ package usecase
 
 import (
 	"context"
-	"manage-service/internal/entity"
+	"manage-service/internal/domain/entity"
+	"time"
 )
 
 type (
-	// ApplicantRepo -
 	ApplicantRepo interface {
 		Store(context.Context, *entity.Applicant) error
 		Update(context.Context, entity.Applicant) error
 		GetByID(context.Context, int64) (entity.Applicant, error)
 		List(ctx context.Context, programID int64) ([]entity.Applicant, error)
 		Delete(context.Context, int64) error
-		ListPrograms(context.Context) ([]entity.Program, error)
-		GetProgramByID(context.Context, int64) (entity.Program, error)
 
-		StoreDocument(context.Context, *entity.Document) error
-		UpdateDocumentStatus(ctx context.Context, id int64, status string) error
-		GetDocuments(context.Context, int64) ([]entity.Document, error)
-		GetDocumentByID(context.Context, int64) (entity.Document, error)
-
-		StoreExtractedField(ctx context.Context, applicantID int64, documentID int64, field, value string) error
 		StoreIdentification(ctx context.Context, data entity.IdentificationData) error
 		StoreEducation(ctx context.Context, data entity.EducationData) error
 		StoreRecommendation(ctx context.Context, data entity.RecommendationData) error
@@ -36,9 +28,7 @@ type (
 		DeleteRecommendation(context.Context, int64) error
 		DeleteAchievement(context.Context, int64) error
 		DeleteLanguageTraining(context.Context, int64) error
-
 		DeleteDataByDocumentID(context.Context, string, int64) error
-		DeleteDocument(context.Context, int64) error
 
 		StoreDataVersion(context.Context, entity.DataVersion) error
 		GetDataVersions(context.Context, int64, string) ([]entity.DataVersion, error)
@@ -51,7 +41,8 @@ type (
 		GetLatestTranscript(ctx context.Context, applicantID int64) (entity.TranscriptData, error)
 		GetLatestLanguageTraining(context.Context, int64) (entity.LanguageTraining, error)
 		GetLatestMotivation(context.Context, int64) (entity.MotivationData, error)
-		GetLatestDocumentByCategory(context.Context, int64, string) (entity.Document, error)
+		GetLatestVideo(context.Context, int64) (entity.VideoData, error)
+		UpdateVideo(context.Context, entity.VideoData) error
 		StoreMotivation(ctx context.Context, data entity.MotivationData) error
 
 		UpdateIdentification(context.Context, entity.IdentificationData) error
@@ -62,22 +53,50 @@ type (
 		UpdateAchievement(context.Context, entity.AchievementData) error
 		UpdateLanguageTraining(context.Context, entity.LanguageTraining) error
 		UpdateMotivation(context.Context, entity.MotivationData) error
+		UpdateApplicantRanking(ctx context.Context, applicantID int64, score float64, status string) error
+		ConfirmModelData(ctx context.Context, applicantID int64, confirmedBy string) error
+		GetScoringScheme(ctx context.Context, applicantID int64) (string, error)
+		SetScoringScheme(ctx context.Context, applicantID int64, scheme string) error
+	}
 
+	DocumentRepo interface {
+		StoreDocument(context.Context, *entity.Document) error
+		UpdateDocumentStatus(ctx context.Context, id int64, status string) error
+		UpdateDocumentStatusByPath(ctx context.Context, storagePath string, status string) error
+		GetDocuments(context.Context, int64) ([]entity.Document, error)
+		GetDocumentByID(context.Context, int64) (entity.Document, error)
+		DeleteDocument(context.Context, int64) error
+		UpdateDocumentCategory(ctx context.Context, id int64, category string) error
+		UpdateDocumentStoragePath(ctx context.Context, id int64, storagePath string) error
+		GetLatestDocumentByCategory(context.Context, int64, string) (entity.Document, error)
+		StoreExtractedField(ctx context.Context, applicantID int64, documentID int64, field, value string) error
+	}
+
+	ExpertRepo interface {
 		StoreEvaluation(ctx context.Context, eval entity.ExpertEvaluation) error
 		UpdateEvaluation(ctx context.Context, eval entity.ExpertEvaluation) error
 		UpdateEvaluationStatus(ctx context.Context, applicantID int64, expertID string, status string) error
 		ListEvaluations(ctx context.Context, applicantID int64) ([]entity.ExpertEvaluation, error)
 		GetEvaluation(ctx context.Context, applicantID int64, expertID string, category string) (entity.ExpertEvaluation, error)
 		GetCriteria(ctx context.Context) ([]entity.EvaluationCriteria, error)
+		CreateCriteria(ctx context.Context, c entity.EvaluationCriteria) error
+		UpdateCriteria(ctx context.Context, c entity.EvaluationCriteria) error
+		DeleteCriteria(ctx context.Context, code string) error
 		SaveEvaluationBatch(ctx context.Context, evaluations []entity.ExpertEvaluation) error
-		GetAggregatedScore(ctx context.Context, applicantID int64) (float64, error)
-		UpdateApplicantRanking(ctx context.Context, applicantID int64, score float64, status string) error
+		GetAggregatedScore(ctx context.Context, applicantID int64, categories []string) (float64, error)
 
-		GetExpertSlots(ctx context.Context) ([]entity.ExpertSlot, error)
-		AssignExpertSlot(ctx context.Context, userID string, slotNumber int) error
-		RemoveExpertSlot(ctx context.Context, slotNumber int) error
-		GetExpertSlotByUserID(ctx context.Context, userID string) (entity.ExpertSlot, error)
+		GetExpertSlots(ctx context.Context, programID int64) ([]entity.ExpertSlot, error)
+		AssignExpertSlot(ctx context.Context, userID string, slotNumber int, programID int64) error
+		RemoveExpertSlot(ctx context.Context, slotNumber int, programID int64) error
+		GetExpertSlotByUserID(ctx context.Context, userID string, programID int64) (entity.ExpertSlot, error)
 		GetUsersByRoles(ctx context.Context, roles []string) ([]entity.User, error)
+	}
+
+	ProgramRepo interface {
+		ListPrograms(context.Context) ([]entity.Program, error)
+		GetProgramByID(context.Context, int64) (entity.Program, error)
+		CreateProgram(ctx context.Context, p entity.Program) (entity.Program, error)
+		UpdateProgramStatus(ctx context.Context, id int64, status string) error
 	}
 
 	// S3Provider -
@@ -85,19 +104,17 @@ type (
 		UploadFile(ctx context.Context, path string, content []byte) error
 		GetFile(ctx context.Context, path string) ([]byte, error)
 		DeleteFile(ctx context.Context, path string) error
+		ListFiles(ctx context.Context, prefix string) ([]string, error)
+		CopyFile(ctx context.Context, src, dst string) error
 	}
 
 	// ProgramRepo -
-	ProgramRepo interface {
-		Store(context.Context, entity.Program) error
-		List(context.Context) ([]entity.Program, error)
-	}
-
 	// DocumentQueueRepo -
 	DocumentQueueRepo interface {
 		Enqueue(context.Context, entity.DocumentQueueTask) (string, error)
 		UpdateStatus(ctx context.Context, id string, status string, errMsg *string) error
 		GetByApplicantID(context.Context, int64) ([]entity.DocumentQueueTask, error)
+		GetStuckTasks(ctx context.Context, olderThan time.Duration) ([]entity.DocumentQueueTask, error)
 	}
 
 	DocumentQueueProducer interface {
@@ -107,31 +124,70 @@ type (
 	// ExtractionClient -
 	ExtractionClient interface {
 		TriggerExtraction(context.Context, entity.Document, []byte) (map[string]string, error)
+		ClassifyDocument(ctx context.Context, fileName string, content []byte) (string, []string, error)
 	}
 
-	UseCase interface {
-		Store(context.Context, *entity.Applicant) (int64, error)
-		Update(context.Context, entity.Applicant) error
-		GetByID(context.Context, int64) (entity.Applicant, error)
-		List(ctx context.Context, programID int64) ([]entity.Applicant, error)
-		Delete(context.Context, int64) error
+	Applicant interface {
+		CreateApplicant(ctx context.Context, programID int64, firstName, lastName, patronymic string) (entity.Applicant, error)
+		GetApplicantData(ctx context.Context, applicantID int64, category string) (interface{}, error)
+		ListApplicants(ctx context.Context, programID int64) ([]entity.Applicant, error)
+		DeleteApplicant(ctx context.Context, id int64) error
+		UpdateApplicantData(ctx context.Context, applicantID int64, category string, rawData map[string]interface{}) error
+		DeleteApplicantData(ctx context.Context, applicantID int64, category string, dataID int64) error
+		TransferToOperator(ctx context.Context, applicantID int64) error
+		TransferToExperts(ctx context.Context, applicantID int64, confirmedBy string) error
+	}
 
+	Program interface {
 		ListPrograms(context.Context) ([]entity.Program, error)
 		GetProgramByID(context.Context, int64) (entity.Program, error)
+		CreateProgram(ctx context.Context, p entity.Program) (entity.Program, error)
+		UpdateProgramStatus(ctx context.Context, id int64, status string) error
+	}
 
-		StoreDocument(context.Context, *entity.Document) (int64, error)
-		UpdateDocumentStatus(ctx context.Context, id int64, status string) error
-		GetDocuments(context.Context, int64) ([]entity.Document, error)
-		GetDocumentByID(context.Context, int64) (entity.Document, error)
-		GetFileContent(ctx context.Context, documentID int64) ([]byte, string, string, error)
-		GetDocumentStatus(ctx context.Context, documentID int64) (string, error)
+	Document interface {
+		UploadDocument(ctx context.Context, applicantID int64, category string, fileName string, content []byte, docType string) (entity.Document, error)
+		GetDocuments(ctx context.Context, applicantID int64) ([]entity.Document, error)
+		ViewDocument(ctx context.Context, applicantID int64, category string) ([]byte, string, string, error)
+		ViewDocumentByID(ctx context.Context, documentID int64) ([]byte, string, string, error)
+		DeleteDocument(ctx context.Context, applicantID int64, documentID int64) error
+		ReprocessLatestDocument(ctx context.Context, applicantID int64, category string) (int64, error)
+		ReprocessDocument(ctx context.Context, documentID int64) error
+		ChangeDocumentCategory(ctx context.Context, documentID int64, newCategory string) error
+	GetDocumentStatus(ctx context.Context, documentID int64) (string, error)
+		UpdateDocumentStatus(ctx context.Context, documentID int64, status string) error
+		GetQueueTasks(ctx context.Context, applicantID int64) ([]entity.DocumentQueueTask, error)
+		ProcessAIResult(ctx context.Context, applicantID int64, documentID int64, taskCategory string, rawData map[string]string) error
+	}
 
+	StagingFileParam struct {
+		Name    string
+		Content []byte
+	}
+
+	Expert interface {
 		SaveExpertEvaluation(ctx context.Context, applicantID int64, expertID string, userID string, userName string, role string, evaluations []entity.ExpertEvaluation, complete bool) error
-		ListExpertEvaluations(ctx context.Context, applicantID int64, currentUserID string) ([]entity.ExpertEvaluation, error)
+		ListExpertEvaluations(ctx context.Context, applicantID int64, currentUserID string, role string) ([]entity.ExpertEvaluation, error)
 		GetEvaluationCriteria(ctx context.Context) ([]entity.EvaluationCriteria, error)
-
-		GetExpertSlots(ctx context.Context) ([]entity.ExpertSlot, error)
-		AssignExpertSlot(ctx context.Context, userID string, slotNumber int, requesterRole string) error
+		GetEvaluationCriteriaForApplicant(ctx context.Context, applicantID int64) ([]entity.EvaluationCriteria, string, error)
+		GetApplicantScoringScheme(ctx context.Context, applicantID int64) (string, error)
+		SetApplicantScoringScheme(ctx context.Context, applicantID int64, scheme string, role string) error
+		CreateCriteria(ctx context.Context, c entity.EvaluationCriteria) error
+		UpdateCriteria(ctx context.Context, c entity.EvaluationCriteria) error
+		DeleteCriteria(ctx context.Context, code string) error
+		GetExpertSlots(ctx context.Context, programID int64) ([]entity.ExpertSlot, error)
+		AssignExpertSlot(ctx context.Context, userID string, slotNumber int, programID int64, requesterRole string) error
 		ListExperts(ctx context.Context) ([]entity.User, error)
+	}
+
+	// AIScoringTrigger — узкий интерфейс для запуска AI-оценивания из applicant usecase.
+	// Разрывает циклическую зависимость между ApplicantUseCase и ExpertUseCase.
+	AIScoringTrigger interface {
+		TriggerAIScoring(ctx context.Context, applicantID int64, programID int64)
+	}
+
+	// ScoringClient — HTTP-клиент к data-extraction-service для AI-оценивания портфолио.
+	ScoringClient interface {
+		ScorePortfolio(ctx context.Context, criteria []entity.EvaluationCriteria, applicantData map[string]interface{}) ([]entity.ScoringResult, error)
 	}
 )

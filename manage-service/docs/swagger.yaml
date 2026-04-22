@@ -1,7 +1,11 @@
 definitions:
   entity.Applicant:
     properties:
+      aggregated_score:
+        type: number
       created_at:
+        type: string
+      evaluation_status:
         type: string
       first_name:
         type: string
@@ -14,10 +18,28 @@ definitions:
       program_id:
         type: integer
       score:
+        description: Maps to aggregated_score for legacy compatibility
         type: number
       status:
         type: string
       updated_at:
+        type: string
+    type: object
+  entity.Document:
+    properties:
+      applicant_id:
+        type: integer
+      file_name:
+        type: string
+      file_type:
+        type: string
+      id:
+        type: integer
+      status:
+        type: string
+      storage_path:
+        type: string
+      uploaded_at:
         type: string
     type: object
   entity.DocumentQueueTask:
@@ -41,6 +63,18 @@ definitions:
       updated_at:
         type: string
     type: object
+  entity.EvaluationCriteria:
+    properties:
+      code:
+        type: string
+      max_score:
+        type: integer
+      title:
+        type: string
+      type:
+        description: BASE, ALTERNATIVE
+        type: string
+    type: object
   entity.ExpertEvaluation:
     properties:
       applicant_id:
@@ -61,6 +95,9 @@ definitions:
         type: integer
       source_info:
         type: string
+      status:
+        description: DRAFT, COMPLETED
+        type: string
       updated_at:
         type: string
       updated_by_id:
@@ -70,11 +107,13 @@ definitions:
     properties:
       created_at:
         type: string
+      first_name:
+        type: string
+      last_name:
+        type: string
       slot_number:
         type: integer
       user_id:
-        type: string
-      user_name:
         type: string
     type: object
   entity.Program:
@@ -96,27 +135,25 @@ definitions:
     properties:
       email:
         type: string
+      first_name:
+        type: string
       id:
         type: string
-      name:
+      last_name:
         type: string
       role:
         type: string
     type: object
-  v1.assignSlotRequest:
+  handlers.assignSlotRequest:
     properties:
+      role:
+        type: string
       slot_number:
         type: integer
       user_id:
         type: string
-      user_role:
-        type: string
-    required:
-    - slot_number
-    - user_id
-    - user_role
     type: object
-  v1.createApplicantRequest:
+  handlers.createApplicantRequest:
     properties:
       first_name:
         type: string
@@ -126,42 +163,36 @@ definitions:
         type: string
       program_id:
         type: integer
-    required:
-    - first_name
-    - last_name
-    - program_id
     type: object
-  v1.expertEvaluationRequest:
+  handlers.expertEvaluationRequest:
     properties:
-      category:
-        type: string
-      comment:
-        type: string
+      complete:
+        type: boolean
       expert_id:
         type: string
-      score:
-        type: integer
+      scores:
+        items:
+          $ref: '#/definitions/entity.ExpertEvaluation'
+        type: array
       user_id:
         type: string
       user_name:
         type: string
       user_role:
         type: string
-    required:
-    - category
-    - score
-    - user_id
-    - user_name
-    - user_role
     type: object
+host: localhost:8080
 info:
   contact: {}
+  description: API for managing applicants and documents
+  title: Manage Service API
+  version: "1.0"
 paths:
   /v1/applicants:
     get:
-      description: Получаем список абитуриентов
+      description: Возвращает список абитуриентов. Можно фильтровать по ID программы.
       parameters:
-      - description: Фильтр по ID программы
+      - description: ID образовательной программы для фильтрации
         in: query
         name: program_id
         type: integer
@@ -180,25 +211,28 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Список абитуриентов
       tags:
       - applicants
     post:
       consumes:
       - application/json
-      description: Добавить нового абитуриента
+      description: Создаёт нового абитуриента и привязывает его к образовательной
+        программе.
       parameters:
-      - description: Данные абитуриента
+      - description: Данные нового абитуриента
         in: body
-        name: request
+        name: body
         required: true
         schema:
-          $ref: '#/definitions/v1.createApplicantRequest'
+          $ref: '#/definitions/handlers.createApplicantRequest'
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Created
           schema:
             $ref: '#/definitions/entity.Applicant'
         "400":
@@ -213,14 +247,14 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Создать абитуриента
+      security:
+      - BearerAuth: []
+      summary: Создание абитуриента
       tags:
       - applicants
   /v1/applicants/{id}:
     delete:
-      consumes:
-      - application/json
-      description: Полностью удаляет абитуриента и связанные с ним данные из системы
+      description: Удаляет абитуриента и все связанные с ним данные по ID.
       parameters:
       - description: ID абитуриента
         in: path
@@ -248,31 +282,67 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Удаление абитуриента
       tags:
       - applicants
-  /v1/applicants/{id}/data:
+  /v1/applicants/{id}/criteria:
     get:
-      description: Получить данные (парсинг) из документа абитуриента
+      description: Возвращает список всех критериев экспертной оценки. ID абитуриента
+        в пути используется для валидации.
       parameters:
       - description: ID абитуриента
         in: path
         name: id
         required: true
         type: integer
-      - description: Категория документа
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/entity.EvaluationCriteria'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получение критериев оценки
+      tags:
+      - experts
+  /v1/applicants/{id}/data:
+    get:
+      description: Возвращает структурированные данные абитуриента по указанной категории
+        (identification, education, transcript и т.д.).
+      parameters:
+      - description: ID абитуриента
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Категория данных
         in: query
         name: category
-        required: true
         type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
-          schema:
-            additionalProperties: true
-            type: object
+          schema: {}
         "400":
           description: Bad Request
           schema:
@@ -285,27 +355,29 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Получить данные документа
+      security:
+      - BearerAuth: []
+      summary: Данные абитуриента по категории
       tags:
       - applicants
     patch:
       consumes:
       - application/json
-      description: Обновить данные абитуриента для категории
+      description: Обновляет данные абитуриента по указанной категории. Принимает
+        произвольный JSON-объект.
       parameters:
       - description: ID абитуриента
         in: path
         name: id
         required: true
         type: integer
-      - description: Категория документа
+      - description: Категория данных
         in: query
         name: category
-        required: true
         type: string
-      - description: Обновленные данные
+      - description: Обновлённые данные
         in: body
-        name: request
+        name: body
         required: true
         schema:
           additionalProperties: true
@@ -331,26 +403,27 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Обновить данные документа
+      security:
+      - BearerAuth: []
+      summary: Обновление данных абитуриента
       tags:
       - applicants
   /v1/applicants/{id}/data/{category}/{dataId}:
     delete:
-      consumes:
-      - application/json
-      description: Удаляет конкретную запись о данных абитуриенте
+      description: Удаляет конкретную запись данных абитуриента (например, запись
+        о работе или достижении) по категории и ID записи.
       parameters:
       - description: ID абитуриента
         in: path
         name: id
         required: true
         type: integer
-      - description: Категория данных
+      - description: Категория данных (work_experience, achievements и т.д.)
         in: path
         name: category
         required: true
         type: string
-      - description: ID данных
+      - description: ID записи
         in: path
         name: dataId
         required: true
@@ -376,14 +449,52 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Удаление данных абитуриента
       tags:
       - applicants
   /v1/applicants/{id}/documents:
+    get:
+      description: Возвращает список всех загруженных документов абитуриента с их
+        метаданными и статусами обработки.
+      parameters:
+      - description: ID абитуриента
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/entity.Document'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список документов абитуриента
+      tags:
+      - documents
     post:
       consumes:
       - multipart/form-data
-      description: Загрузка документа для абитуриента
+      description: Загружает файл документа для абитуриента, сохраняет в MinIO и запускает
+        очередь AI-обработки.
       parameters:
       - description: ID абитуриента
         in: path
@@ -395,7 +506,11 @@ paths:
         name: category
         required: true
         type: string
-      - description: Документ
+      - description: Тип документа (например, для профессиональной переподготовки)
+        in: formData
+        name: doc_type
+        type: string
+      - description: Файл документа (PDF)
         in: formData
         name: file
         required: true
@@ -421,15 +536,56 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Загрузить документ
+      security:
+      - BearerAuth: []
+      summary: Загрузка документа
       tags:
-      - applicants
+      - documents
+  /v1/applicants/{id}/documents/{docId}:
+    delete:
+      description: Удаляет документ и все связанные с ним извлечённые данные по ID
+        абитуриента и ID документа.
+      parameters:
+      - description: ID абитуриента
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: ID документа
+        in: path
+        name: docId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удаление документа
+      tags:
+      - documents
   /v1/applicants/{id}/documents/reprocess:
     post:
-      consumes:
-      - application/json
-      description: Повторная обработка последнего загруженного документа абитуриента
-        по категории
+      description: Запускает повторное AI-извлечение для последнего загруженного документа
+        абитуриента по указанной категории.
       parameters:
       - description: ID абитуриента
         in: path
@@ -447,7 +603,8 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
         "400":
           description: Bad Request
@@ -461,12 +618,15 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Повторная обработка последнего документа
       tags:
-      - applicants
+      - documents
   /v1/applicants/{id}/documents/view:
     get:
-      description: Возвращает последний документ абитуриента по категории
+      description: Возвращает содержимое последнего загруженного файла по ID абитуриента
+        и категории. Content-Type определяется типом файла.
       parameters:
       - description: ID абитуриента
         in: path
@@ -497,18 +657,30 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Просмотр документа абитуриента
+      security:
+      - BearerAuth: []
+      summary: Просмотр последнего документа абитуриента
       tags:
-      - applicants
+      - documents
   /v1/applicants/{id}/evaluations:
     get:
-      description: Возвращает все оценки для абитуриента
+      description: 'Возвращает список экспертных оценок по абитуриенту. Результат
+        фильтруется по роли пользователя: эксперт видит только свои оценки, администратор
+        — все.'
       parameters:
       - description: ID абитуриента
         in: path
         name: id
         required: true
         type: integer
+      - description: ID текущего пользователя
+        in: query
+        name: user_id
+        type: string
+      - description: Роль текущего пользователя
+        in: query
+        name: user_role
+        type: string
       produces:
       - application/json
       responses:
@@ -518,14 +690,22 @@ paths:
             items:
               $ref: '#/definitions/entity.ExpertEvaluation'
             type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
       summary: Список оценок экспертов
       tags:
       - experts
-    post:
+    put:
       consumes:
       - application/json
-      description: Сохраняет или обновляет оценку за категорию документа. Лимит 3
-        эксперта на систему.
+      description: Сохраняет или обновляет оценки эксперта по критериям для указанного
+        абитуриента. Завершённую оценку изменить нельзя.
       parameters:
       - description: ID абитуриента
         in: path
@@ -534,10 +714,10 @@ paths:
         type: integer
       - description: Данные оценки
         in: body
-        name: request
+        name: body
         required: true
         schema:
-          $ref: '#/definitions/v1.expertEvaluationRequest'
+          $ref: '#/definitions/handlers.expertEvaluationRequest'
       produces:
       - application/json
       responses:
@@ -547,12 +727,33 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Сохранить оценку эксперта
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Сохранение экспертной оценки
       tags:
       - experts
   /v1/applicants/{id}/queue-status:
     get:
-      description: Возвращает массив статусов очереди для абитуриента
+      description: Возвращает список задач в очереди AI-обработки документов для указанного
+        абитуриента.
       parameters:
       - description: ID абитуриента
         in: path
@@ -580,27 +781,144 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Получить статус очереди документов
+      security:
+      - BearerAuth: []
+      summary: Статус очереди обработки
       tags:
-      - applicants
-  /v1/applicants/{id}/ws:
-    get:
-      description: Endpoint для инициализации WebSocket соединения
+      - documents
+  /v1/applicants/{id}/transfer-to-experts:
+    post:
+      description: Переводит абитуриента на этап экспертной оценки (изменяет статус
+        заявки).
       parameters:
       - description: ID абитуриента
         in: path
         name: id
         required: true
         type: integer
-      responses: {}
-      summary: Подключение к WebSocket
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Передача абитуриента экспертам
       tags:
       - applicants
+  /v1/applicants/{id}/transfer-to-operator:
+    post:
+      description: Переводит абитуриента на этап проверки оператором (изменяет статус
+        заявки).
+      parameters:
+      - description: ID абитуриента
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Передача абитуриента оператору
+      tags:
+      - applicants
+  /v1/applicants/{id}/ws:
+    get:
+      description: Устанавливает WebSocket-соединение для получения обновлений статуса
+        обработки документов абитуриента в реальном времени.
+      parameters:
+      - description: ID абитуриента
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "101":
+          description: Switching Protocols
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: WebSocket соединение
+      tags:
+      - applicants
+  /v1/documents/{id}/category:
+    patch:
+      description: Меняет категорию документа на новую и запускает его повторную обработку.
+      parameters:
+      - description: ID документа
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 'Новая категория: { \'
+        in: body
+        name: category
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Изменение категории документа
+      tags:
+      - documents
   /v1/documents/{id}/reprocess:
     post:
-      consumes:
-      - application/json
-      description: Запускает повторную обработку конкретного документа
+      description: Запускает повторное AI-извлечение для конкретного документа по
+        его ID.
       parameters:
       - description: ID документа
         in: path
@@ -628,14 +946,14 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Повторная обработка документа
+      security:
+      - BearerAuth: []
+      summary: Повторная обработка документа по ID
       tags:
       - documents
   /v1/documents/{id}/status:
     get:
-      consumes:
-      - application/json
-      description: Получаем статус обработки документа
+      description: Возвращает текущий статус обработки документа по его ID.
       parameters:
       - description: ID документа
         in: path
@@ -648,7 +966,8 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
         "400":
           description: Bad Request
@@ -662,12 +981,15 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Статус документа
       tags:
       - documents
   /v1/documents/{id}/view:
     get:
-      description: Возвращает файл документа по его ID
+      description: Возвращает содержимое файла документа напрямую (inline) по ID документа.
+        Content-Type определяется типом файла.
       parameters:
       - description: ID документа
         in: path
@@ -693,12 +1015,14 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Просмотр документа по ID
       tags:
       - documents
   /v1/experts:
     get:
-      description: Возвращает список всех пользователей с ролью эксперта или наблюдателя
+      description: Возвращает список всех пользователей с ролью эксперта.
       produces:
       - application/json
       responses:
@@ -708,12 +1032,20 @@ paths:
             items:
               $ref: '#/definitions/entity.User'
             type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
       summary: Список экспертов
       tags:
       - experts
   /v1/experts/slots:
     get:
-      description: Возвращает 3 слота экспертов и назначенных на них пользователей
+      description: Возвращает все слоты назначения экспертов с их статусами.
       produces:
       - application/json
       responses:
@@ -723,20 +1055,29 @@ paths:
             items:
               $ref: '#/definitions/entity.ExpertSlot'
             type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
       summary: Список слотов экспертов
       tags:
       - experts
     post:
       consumes:
       - application/json
-      description: Закрепляет пользователя за слотом Эксперт 1, 2 или 3.
+      description: Назначает пользователя на указанный слот эксперта. Доступно только
+        администратору.
       parameters:
-      - description: Данные слота
+      - description: Данные назначения
         in: body
-        name: request
+        name: body
         required: true
         schema:
-          $ref: '#/definitions/v1.assignSlotRequest'
+          $ref: '#/definitions/handlers.assignSlotRequest'
       produces:
       - application/json
       responses:
@@ -746,12 +1087,32 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Назначить эксперта на слот
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Назначение эксперта на слот
       tags:
       - experts
   /v1/programs:
     get:
-      description: Получаем список образовательных программ
+      description: Получение списка доступных магистерских программ с пагинацией (по
+        умолчанию limit=100)
+      parameters:
+      - description: Количество записей (по умолчанию 100)
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -767,12 +1128,14 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - ApiKeyAuth: []
       summary: Список программ
       tags:
       - programs
   /v1/programs/{id}:
     get:
-      description: Получение информации о программе
+      description: Получение информации об образовательной программе по ID
       parameters:
       - description: ID программы
         in: path
@@ -786,13 +1149,27 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/entity.Program'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "404":
           description: Not Found
           schema:
             additionalProperties:
               type: string
             type: object
-      summary: Получение программы
+      security:
+      - ApiKeyAuth: []
+      summary: Информация о программе
       tags:
       - programs
+securityDefinitions:
+  BearerAuth:
+    description: 'Введите токен в формате: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

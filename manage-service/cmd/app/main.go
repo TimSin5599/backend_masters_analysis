@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	"manage-service/config"
 	"manage-service/pkg/httpserver"
@@ -18,8 +19,20 @@ import (
 	ws "manage-service/internal/websocket"
 
 	"github.com/gin-gonic/gin"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
+// @title           Manage Service API
+// @version         1.0
+// @description     API for managing applicants and documents
+// @host            localhost:8080
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Введите токен в формате: Bearer {token}
 func main() {
 	// Configuration
 	cfg, err := config.NewConfig()
@@ -38,7 +51,10 @@ func main() {
 	defer pg.Close()
 
 	// 1. Repository
-	repo := repository.NewApplicantRepo(pg.Pool)
+	appRepo := repository.NewApplicantRepo(pg.Pool)
+	docRepo := repository.NewDocumentRepo(pg.Pool)
+	expertRepo := repository.NewExpertRepo(pg.Pool)
+	progRepo := repository.NewProgramRepo(pg.Pool)
 	queueRepo := repository.NewDocumentQueueRepo(pg.Pool)
 
 	// 2. Infrastructure
@@ -60,18 +76,48 @@ func main() {
 	extractionClient := extraction.New(cfg.Extraction.ServiceURL)
 
 	// 3. UseCase
-	u := usecase.New(repo, queueRepo, producer, extractionClient, minioClient)
+	// Scoring client для AI-оценивания портфолио (POST /v1/score на data-extraction-service)
+	scoringClient := extraction.NewScoringClient(cfg.Extraction.ServiceURL)
+
+	docUC := usecase.NewDocumentUseCase(docRepo, appRepo, queueRepo, producer, extractionClient, minioClient)
+	appUC := usecase.NewApplicantUseCase(appRepo, docRepo, docUC, expertRepo)
+	expertUC := usecase.NewExpertUseCase(expertRepo, appRepo, scoringClient)
+	progUC := usecase.NewProgramUseCase(progRepo)
+
+	// Подключаем AI-оценивание к applicantUC (разрыв циклической зависимости через интерфейс)
+	appUC.SetAIScoringTrigger(expertUC)
 
 	// 4. WebSocket Hub
 	hub := ws.NewHub()
 
+	// Context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// 5. RabbitMQ Consumer
-	consumer, err := rabbitmq.NewConsumer(cfg.RabbitMQ.URL, repo, queueRepo, u, minioClient, extractionClient, hub)
+	consumer, err := rabbitmq.NewConsumer(cfg.RabbitMQ.URL, appRepo, queueRepo, appUC, docUC, docRepo, minioClient, extractionClient, hub)
 	if err != nil {
 		l.Fatal("app - Run - rabbitmq.NewConsumer: %v", err)
 	}
 	defer consumer.Close()
-	go consumer.Start(context.Background())
+	// Recovery worker: re-enqueues tasks stuck in "processing"/"pending" after service crashes.
+	// Runs 30s after startup, then every 10 minutes. Threshold: 20min > consumer's 12min timeout.
+	go rabbitmq.StartPeriodicRecovery(ctx, queueRepo, docRepo, producer, 10*time.Minute, 20*time.Minute)
+
+	// Supervision loop: restart consumer goroutine if it exits unexpectedly (e.g. after a panic)
+	go func() {
+		for {
+			if err := consumer.Start(ctx); err != nil {
+				l.Error("app - consumer.Start: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+				l.Info("app - restarting RabbitMQ consumer...")
+			}
+		}
+	}()
 
 	// HTTP Server
 	handler := gin.New()
@@ -80,14 +126,26 @@ func main() {
 	})
 
 	// Router
-	v1.NewRouter(handler, u, queueRepo, hub)
+	v1.NewRouter(handler, appUC, docUC, expertUC, progUC, hub, cfg.JWT.SignKey, cfg.CORS.AllowOrigin)
 
 	httpServer := httpserver.New(handler, cfg.HTTP.Port)
-	l.Info("app - Run - Server started on port: " + cfg.HTTP.Port)
+	l.Info("app - Run - Server started on port: %s", cfg.HTTP.Port)
 
 	// Waiting signal
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
+
 	select {
+	case s := <-interrupt:
+		l.Info("app - Run - signal: " + s.String())
 	case err = <-httpServer.Notify():
 		l.Error("app - Run - httpServer.Notify: %v", err)
+	}
+
+	// Shutdown
+	cancel() // Stop consumer and other workers
+	err = httpServer.Shutdown()
+	if err != nil {
+		l.Error("app - Run - httpServer.Shutdown: %v", err)
 	}
 }

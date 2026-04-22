@@ -23,3 +23,10 @@ minio:
   access_key: "minioadmin"
   secret_key: "minioadmin"
   bucket: "applicants"
+
+jwt:
+  sign_key: "secret-key"
+
+cors:
+  allow_origin: "http://localhost:3000"
+

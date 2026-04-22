@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
-	"manage-service/internal/entity"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"manage-service/internal/domain/entity"
 )
 
 type ApplicantRepo struct {
@@ -36,22 +38,11 @@ func (r *ApplicantRepo) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *ApplicantRepo) GetByID(ctx context.Context, id int64) (entity.Applicant, error) {
-	query := `SELECT id, program_id, status, created_at, updated_at FROM applicants WHERE id=$1`
+	query := `SELECT id, program_id, status, aggregated_score, created_at, updated_at FROM applicants WHERE id=$1`
 	var a entity.Applicant
-	err := r.pool.QueryRow(ctx, query, id).Scan(&a.ID, &a.ProgramID, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	err := r.pool.QueryRow(ctx, query, id).Scan(&a.ID, &a.ProgramID, &a.Status, &a.AggregatedScore, &a.CreatedAt, &a.UpdatedAt)
+	a.Score = float64(a.AggregatedScore)
 	return a, err
-}
-
-func (r *ApplicantRepo) StoreDocument(ctx context.Context, d *entity.Document) error {
-	query := `INSERT INTO applicants_document (applicant_id, file_type, file_name, storage_path) VALUES ($1, $2, $3, $4) RETURNING id`
-	err := r.pool.QueryRow(ctx, query, d.ApplicantID, d.FileType, d.FileName, d.StoragePath).Scan(&d.ID)
-	return err
-}
-
-func (r *ApplicantRepo) UpdateDocumentStatus(ctx context.Context, id int64, status string) error {
-	query := `UPDATE applicants_document SET status=$1 WHERE id=$2`
-	_, err := r.pool.Exec(ctx, query, status, id)
-	return err
 }
 
 func (r *ApplicantRepo) StoreDataVersion(ctx context.Context, dv entity.DataVersion) error {
@@ -61,28 +52,28 @@ func (r *ApplicantRepo) StoreDataVersion(ctx context.Context, dv entity.DataVers
 }
 
 func (r *ApplicantRepo) StoreIdentification(ctx context.Context, data entity.IdentificationData) error {
-	query := `INSERT INTO applicants_data_identification 
-		(applicant_id, document_id, name, surname, patronymic, email, phone, document_number, date_of_birth, gender, nationality, source, version) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
-	_, err := r.pool.Exec(ctx, query, 
-		data.ApplicantID, data.DocumentID, data.Name, data.Surname, data.Patronymic, 
-		data.Email, data.Phone, data.DocumentNumber, data.DateOfBirth, 
-		data.Gender, data.Nationality, data.Source, data.Version,
+	query := `INSERT INTO applicants_data_identification
+		(applicant_id, document_id, name, surname, patronymic, email, phone, document_number, date_of_birth, gender, nationality, source)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+	_, err := r.pool.Exec(ctx, query,
+		data.ApplicantID, data.DocumentID, data.Name, data.Surname, data.Patronymic,
+		data.Email, data.Phone, data.DocumentNumber, data.DateOfBirth,
+		data.Gender, data.Nationality, data.Source,
 	)
 	return err
 }
 
 func (r *ApplicantRepo) List(ctx context.Context, programID int64) ([]entity.Applicant, error) {
 	query := `
-		SELECT 
-			a.id, a.program_id, a.status, a.created_at, a.updated_at,
+		SELECT
+			a.id, a.program_id, a.status, a.aggregated_score, a.created_at, a.updated_at,
 			COALESCE(i.name, ''), COALESCE(i.surname, ''), COALESCE(i.patronymic, '')
 		FROM applicants a
 		LEFT JOIN LATERAL (
-			SELECT name, surname, patronymic 
-			FROM applicants_data_identification 
-			WHERE applicant_id = a.id 
-			ORDER BY version DESC 
+			SELECT name, surname, patronymic
+			FROM applicants_data_identification
+			WHERE applicant_id = a.id
+			ORDER BY id DESC
 			LIMIT 1
 		) i ON true
 	`
@@ -100,94 +91,50 @@ func (r *ApplicantRepo) List(ctx context.Context, programID int64) ([]entity.App
 	for rows.Next() {
 		var a entity.Applicant
 		err = rows.Scan(
-			&a.ID, &a.ProgramID, &a.Status, &a.CreatedAt, &a.UpdatedAt,
+			&a.ID, &a.ProgramID, &a.Status, &a.AggregatedScore, &a.CreatedAt, &a.UpdatedAt,
 			&a.FirstName, &a.LastName, &a.Patronymic,
 		)
 		if err != nil {
 			return nil, err
 		}
-		a.Score = 0.0 // Placeholder until score calculation is implemented
+		a.Score = float64(a.AggregatedScore)
 		applicants = append(applicants, a)
 	}
 	return applicants, nil
 }
 
-func (r *ApplicantRepo) GetDocuments(ctx context.Context, applicantID int64) ([]entity.Document, error) {
-	query := `SELECT id, applicant_id, file_type, file_name, storage_path, status, uploaded_at FROM applicants_document WHERE applicant_id=$1`
-	rows, err := r.pool.Query(ctx, query, applicantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var docs []entity.Document
-	for rows.Next() {
-		var d entity.Document
-		err = rows.Scan(&d.ID, &d.ApplicantID, &d.FileType, &d.FileName, &d.StoragePath, &d.Status, &d.UploadedAt)
-		if err != nil {
-			return nil, err
-		}
-		docs = append(docs, d)
-	}
-	return docs, nil
-}
-
-func (r *ApplicantRepo) GetDocumentByID(ctx context.Context, id int64) (entity.Document, error) {
-	query := `SELECT id, applicant_id, file_type, file_name, storage_path, status, uploaded_at FROM applicants_document WHERE id=$1`
-	var d entity.Document
-	err := r.pool.QueryRow(ctx, query, id).Scan(&d.ID, &d.ApplicantID, &d.FileType, &d.FileName, &d.StoragePath, &d.Status, &d.UploadedAt)
-	return d, err
-}
-
 func (r *ApplicantRepo) GetDataVersions(ctx context.Context, applicantID int64, category string) ([]entity.DataVersion, error) {
-	// For simplicity, returning empty for now or implementing if necessary
 	return nil, nil
 }
 
-func (r *ApplicantRepo) StoreExtractedField(ctx context.Context, applicantID int64, documentID int64, field, value string) error {
-	query := `INSERT INTO extracted_fields (applicant_id, document_id, field_name, field_value) VALUES ($1, $2, $3, $4)`
-	_, err := r.pool.Exec(ctx, query, applicantID, documentID, field, value)
-	return err
-}
-
-func (r *ApplicantRepo) GetLatestDocumentByCategory(ctx context.Context, applicantID int64, category string) (entity.Document, error) {
-	// file_type in DB matches category (e.g. 'personal_data', 'diploma')
-	query := `SELECT id, applicant_id, file_type, file_name, storage_path, status, uploaded_at FROM applicants_document 
-              WHERE applicant_id=$1 AND file_type=$2 
-              ORDER BY uploaded_at DESC LIMIT 1`
-	var d entity.Document
-	err := r.pool.QueryRow(ctx, query, applicantID, category).Scan(&d.ID, &d.ApplicantID, &d.FileType, &d.FileName, &d.StoragePath, &d.Status, &d.UploadedAt)
-	return d, err
-}
-
 func (r *ApplicantRepo) StoreEducation(ctx context.Context, data entity.EducationData) error {
-	query := `INSERT INTO applicants_data_education (applicant_id, document_id, institution_name, degree_title, major, graduation_date, diploma_serial_number, source, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.InstitutionName, data.DegreeTitle, data.Major, data.GraduationDate, data.DiplomaSerialNumber, data.Source, data.Version)
+	query := `INSERT INTO applicants_data_education (applicant_id, document_id, institution_name, degree_title, major, graduation_date, diploma_serial_number, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.InstitutionName, data.DegreeTitle, data.Major, data.GraduationDate, data.DiplomaSerialNumber, data.Source)
 	return err
 }
 
 func (r *ApplicantRepo) StoreWorkExperience(ctx context.Context, data entity.WorkExperience) error {
-	query := `INSERT INTO applicants_data_work_experience (applicant_id, document_id, company_name, position, start_date, end_date, country, city, record_type, source, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
-	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.CompanyName, data.Position, data.StartDate, data.EndDate, data.Country, data.City, data.RecordType, data.Source, data.Version)
+	query := `INSERT INTO applicants_data_work_experience (applicant_id, document_id, company_name, position, start_date, end_date, country, city, record_type, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.CompanyName, data.Position, data.StartDate, data.EndDate, data.Country, data.City, data.RecordType, data.Source)
 	return err
 }
 
 func (r *ApplicantRepo) GetLatestIdentification(ctx context.Context, applicantID int64) (entity.IdentificationData, error) {
 	query := `
-		SELECT 
-			id, applicant_id, document_id, 
-			COALESCE(name, ''), COALESCE(surname, ''), COALESCE(patronymic, ''), 
-			COALESCE(email, ''), COALESCE(phone, ''), COALESCE(document_number, ''), 
-			COALESCE(date_of_birth, '1970-01-01'), 
-			COALESCE(gender, ''), COALESCE(nationality, ''), 
-			source, version 
-		FROM applicants_data_identification 
-		WHERE applicant_id=$1 
-		ORDER BY version DESC, id DESC 
+		SELECT
+			id, applicant_id, document_id,
+			COALESCE(name, ''), COALESCE(surname, ''), COALESCE(patronymic, ''),
+			COALESCE(email, ''), COALESCE(phone, ''), COALESCE(document_number, ''),
+			COALESCE(date_of_birth, '1970-01-01'),
+			COALESCE(gender, ''), COALESCE(nationality, ''),
+			source
+		FROM applicants_data_identification
+		WHERE applicant_id=$1
+		ORDER BY id DESC
 		LIMIT 1`
 	var d entity.IdentificationData
 	err := r.pool.QueryRow(ctx, query, applicantID).Scan(
-		&d.ID, &d.ApplicantID, &d.DocumentID, &d.Name, &d.Surname, &d.Patronymic, &d.Email, &d.Phone, &d.DocumentNumber, &d.DateOfBirth, &d.Gender, &d.Nationality, &d.Source, &d.Version,
+		&d.ID, &d.ApplicantID, &d.DocumentID, &d.Name, &d.Surname, &d.Patronymic, &d.Email, &d.Phone, &d.DocumentNumber, &d.DateOfBirth, &d.Gender, &d.Nationality, &d.Source,
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" || err.Error() == "pgx: no rows in result set" {
@@ -199,13 +146,13 @@ func (r *ApplicantRepo) GetLatestIdentification(ctx context.Context, applicantID
 }
 
 func (r *ApplicantRepo) GetLatestEducation(ctx context.Context, applicantID int64) (entity.EducationData, error) {
-	query := `SELECT id, applicant_id, document_id, institution_name, degree_title, major, graduation_date, diploma_serial_number, source, version 
-              FROM applicants_data_education 
+	query := `SELECT id, applicant_id, document_id, institution_name, degree_title, major, graduation_date, diploma_serial_number, source
+              FROM applicants_data_education
               WHERE applicant_id=$1 AND document_id IN (SELECT id FROM applicants_document WHERE file_type = 'diploma')
-              ORDER BY version DESC, id DESC LIMIT 1`
+              ORDER BY id DESC LIMIT 1`
 	var d entity.EducationData
 	err := r.pool.QueryRow(ctx, query, applicantID).Scan(
-		&d.ID, &d.ApplicantID, &d.DocumentID, &d.InstitutionName, &d.DegreeTitle, &d.Major, &d.GraduationDate, &d.DiplomaSerialNumber, &d.Source, &d.Version,
+		&d.ID, &d.ApplicantID, &d.DocumentID, &d.InstitutionName, &d.DegreeTitle, &d.Major, &d.GraduationDate, &d.DiplomaSerialNumber, &d.Source,
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" || err.Error() == "pgx: no rows in result set" {
@@ -217,8 +164,8 @@ func (r *ApplicantRepo) GetLatestEducation(ctx context.Context, applicantID int6
 }
 
 func (r *ApplicantRepo) ListEducation(ctx context.Context, applicantID int64) ([]entity.EducationData, error) {
-	query := `SELECT id, applicant_id, document_id, institution_name, degree_title, major, graduation_date, diploma_serial_number, source, version 
-              FROM applicants_data_education 
+	query := `SELECT id, applicant_id, document_id, institution_name, degree_title, major, graduation_date, diploma_serial_number, source
+              FROM applicants_data_education
               WHERE applicant_id=$1 AND document_id IN (SELECT id FROM applicants_document WHERE file_type = 'second_diploma')
               ORDER BY graduation_date DESC`
 	rows, err := r.pool.Query(ctx, query, applicantID)
@@ -230,7 +177,7 @@ func (r *ApplicantRepo) ListEducation(ctx context.Context, applicantID int64) ([
 	list := make([]entity.EducationData, 0)
 	for rows.Next() {
 		var d entity.EducationData
-		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.InstitutionName, &d.DegreeTitle, &d.Major, &d.GraduationDate, &d.DiplomaSerialNumber, &d.Source, &d.Version)
+		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.InstitutionName, &d.DegreeTitle, &d.Major, &d.GraduationDate, &d.DiplomaSerialNumber, &d.Source)
 		if err != nil {
 			return nil, err
 		}
@@ -240,12 +187,11 @@ func (r *ApplicantRepo) ListEducation(ctx context.Context, applicantID int64) ([
 }
 
 func (r *ApplicantRepo) ListWorkExperience(ctx context.Context, applicantID int64, fileType string) ([]entity.WorkExperience, error) {
-	query := `SELECT id, applicant_id, document_id, COALESCE(country, ''), COALESCE(city, ''), COALESCE(company_name, ''), COALESCE(position, ''), COALESCE(start_date, '1970-01-01'), end_date, COALESCE(record_type, ''), COALESCE(source, ''), version FROM applicants_data_work_experience WHERE applicant_id=$1`
-	
+	query := `SELECT id, applicant_id, document_id, COALESCE(country, ''), COALESCE(city, ''), COALESCE(company_name, ''), COALESCE(position, ''), COALESCE(start_date, '1970-01-01'), end_date, COALESCE(record_type, ''), COALESCE(source, '') FROM applicants_data_work_experience WHERE applicant_id=$1`
+
 	args := []interface{}{applicantID}
 	if fileType != "" {
 		if fileType == "prof_development" {
-			// For professional development, we show work, internship, and training records, and also from resume
 			query += ` AND (document_id IN (SELECT id FROM applicants_document WHERE file_type IN ('prof_development', 'internship', 'training', 'resume')) OR document_id IS NULL)`
 		} else {
 			query += ` AND (document_id IN (SELECT id FROM applicants_document WHERE file_type = $2) OR document_id IS NULL)`
@@ -254,7 +200,7 @@ func (r *ApplicantRepo) ListWorkExperience(ctx context.Context, applicantID int6
 	}
 
 	query += ` ORDER BY start_date DESC`
-	log.Printf("[REPO] ListWorkExperience: applicant_id=%d, fileType=%s, query=%s, args=%v", applicantID, fileType, query, args)
+	log.Printf("[REPO] ListWorkExperience: applicant_id=%d, fileType=%s", applicantID, fileType)
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -264,7 +210,7 @@ func (r *ApplicantRepo) ListWorkExperience(ctx context.Context, applicantID int6
 	list := make([]entity.WorkExperience, 0)
 	for rows.Next() {
 		var d entity.WorkExperience
-		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.Country, &d.City, &d.CompanyName, &d.Position, &d.StartDate, &d.EndDate, &d.RecordType, &d.Source, &d.Version)
+		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.Country, &d.City, &d.CompanyName, &d.Position, &d.StartDate, &d.EndDate, &d.RecordType, &d.Source)
 		if err != nil {
 			return nil, err
 		}
@@ -275,7 +221,7 @@ func (r *ApplicantRepo) ListWorkExperience(ctx context.Context, applicantID int6
 }
 
 func (r *ApplicantRepo) ListRecommendations(ctx context.Context, applicantID int64) ([]entity.RecommendationData, error) {
-	query := `SELECT id, applicant_id, document_id, author_name, author_position, author_institution, key_strengths, source, version FROM applicants_data_recommendation WHERE applicant_id=$1 ORDER BY created_at DESC`
+	query := `SELECT id, applicant_id, document_id, author_name, author_position, author_institution, key_strengths, source FROM applicants_data_recommendation WHERE applicant_id=$1 ORDER BY created_at DESC`
 	rows, err := r.pool.Query(ctx, query, applicantID)
 	if err != nil {
 		return nil, err
@@ -285,7 +231,7 @@ func (r *ApplicantRepo) ListRecommendations(ctx context.Context, applicantID int
 	var list []entity.RecommendationData
 	for rows.Next() {
 		var d entity.RecommendationData
-		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.AuthorName, &d.AuthorPosition, &d.AuthorInstitution, &d.KeyStrengths, &d.Source, &d.Version)
+		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.AuthorName, &d.AuthorPosition, &d.AuthorInstitution, &d.KeyStrengths, &d.Source)
 		if err != nil {
 			return nil, err
 		}
@@ -295,13 +241,13 @@ func (r *ApplicantRepo) ListRecommendations(ctx context.Context, applicantID int
 }
 
 func (r *ApplicantRepo) ListAchievements(ctx context.Context, applicantID int64, fileType string) ([]entity.AchievementData, error) {
-	query := `SELECT id, applicant_id, document_id, COALESCE(achievement_title, ''), COALESCE(description, ''), COALESCE(date_received, '1970-01-01'), COALESCE(document_path, ''), COALESCE(achievement_type, ''), COALESCE(company, ''), COALESCE(source, ''), version FROM applicants_data_achievements WHERE applicant_id=$1`
-	
+	query := `SELECT id, applicant_id, document_id, COALESCE(achievement_title, ''), COALESCE(description, ''), COALESCE(date_received, '1970-01-01'), COALESCE(document_path, ''), COALESCE(achievement_type, ''), COALESCE(source, '') FROM applicants_data_achievements WHERE applicant_id=$1`
+
 	args := []interface{}{applicantID}
 	if fileType != "" {
 		if fileType == "achievement" {
-			// Include achievements from resume and certification documents
-			query += ` AND (document_id IN (SELECT id FROM applicants_document WHERE file_type IN ('achievement', 'resume', 'certification')) OR document_id IS NULL)`
+			// Exclude certification — it has its own dedicated section
+			query += ` AND (document_id IN (SELECT id FROM applicants_document WHERE file_type IN ('achievement', 'resume')) OR document_id IS NULL)`
 		} else {
 			query += ` AND (document_id IN (SELECT id FROM applicants_document WHERE file_type = $2) OR document_id IS NULL)`
 			args = append(args, fileType)
@@ -309,7 +255,7 @@ func (r *ApplicantRepo) ListAchievements(ctx context.Context, applicantID int64,
 	}
 
 	query += ` ORDER BY date_received DESC`
-	log.Printf("[REPO] ListAchievements: applicant_id=%d, fileType=%s, query=%s, args=%v", applicantID, fileType, query, args)
+	log.Printf("[REPO] ListAchievements: applicant_id=%d, fileType=%s", applicantID, fileType)
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -319,7 +265,7 @@ func (r *ApplicantRepo) ListAchievements(ctx context.Context, applicantID int64,
 	var list []entity.AchievementData
 	for rows.Next() {
 		var d entity.AchievementData
-		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.AchievementTitle, &d.Description, &d.DateReceived, &d.DocumentPath, &d.AchievementType, &d.Company, &d.Source, &d.Version)
+		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.AchievementTitle, &d.Description, &d.DateReceived, &d.DocumentPath, &d.AchievementType, &d.Source)
 		if err != nil {
 			return nil, err
 		}
@@ -330,14 +276,14 @@ func (r *ApplicantRepo) ListAchievements(ctx context.Context, applicantID int64,
 }
 
 func (r *ApplicantRepo) GetLatestTranscript(ctx context.Context, applicantID int64) (entity.TranscriptData, error) {
-	query := `SELECT id, applicant_id, document_id, 
-		COALESCE(cumulative_gpa, 0), COALESCE(cumulative_grade, ''), 
-		COALESCE(total_credits, 0), COALESCE(obtained_credits, 0), 
-		COALESCE(total_semesters, 0), source, version FROM applicants_data_transcript WHERE applicant_id=$1 ORDER BY version DESC, id DESC LIMIT 1`
+	query := `SELECT id, applicant_id, document_id,
+		COALESCE(cumulative_gpa, 0), COALESCE(cumulative_grade, ''),
+		COALESCE(total_credits, 0), COALESCE(obtained_credits, 0),
+		COALESCE(total_semesters, 0), source FROM applicants_data_transcript WHERE applicant_id=$1 ORDER BY id DESC LIMIT 1`
 	var d entity.TranscriptData
 	err := r.pool.QueryRow(ctx, query, applicantID).Scan(
-		&d.ID, &d.ApplicantID, &d.DocumentID, &d.CumulativeGPA, &d.CumulativeGrade, 
-		&d.TotalCredits, &d.ObtainedCredits, &d.TotalSemesters, &d.Source, &d.Version,
+		&d.ID, &d.ApplicantID, &d.DocumentID, &d.CumulativeGPA, &d.CumulativeGrade,
+		&d.TotalCredits, &d.ObtainedCredits, &d.TotalSemesters, &d.Source,
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" || err.Error() == "pgx: no rows in result set" {
@@ -349,9 +295,9 @@ func (r *ApplicantRepo) GetLatestTranscript(ctx context.Context, applicantID int
 }
 
 func (r *ApplicantRepo) GetLatestLanguageTraining(ctx context.Context, applicantID int64) (entity.LanguageTraining, error) {
-	query := `SELECT id, applicant_id, document_id, russian_level, english_level, certificate_path, COALESCE(exam_name, ''), COALESCE(score, ''), source, version FROM applicants_data_language_training WHERE applicant_id=$1 ORDER BY version DESC, id DESC LIMIT 1`
+	query := `SELECT id, applicant_id, document_id, russian_level, english_level, certificate_path, COALESCE(exam_name, ''), COALESCE(score, ''), source FROM applicants_data_language_training WHERE applicant_id=$1 ORDER BY id DESC LIMIT 1`
 	var d entity.LanguageTraining
-	err := r.pool.QueryRow(ctx, query, applicantID).Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.RussianLevel, &d.EnglishLevel, &d.CertificatePath, &d.ExamName, &d.Score, &d.Source, &d.Version)
+	err := r.pool.QueryRow(ctx, query, applicantID).Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.RussianLevel, &d.EnglishLevel, &d.CertificatePath, &d.ExamName, &d.Score, &d.Source)
 	if err != nil {
 		if err.Error() == "no rows in result set" || err.Error() == "pgx: no rows in result set" {
 			return d, nil
@@ -361,54 +307,34 @@ func (r *ApplicantRepo) GetLatestLanguageTraining(ctx context.Context, applicant
 	return d, nil
 }
 
-func (r *ApplicantRepo) ListPrograms(ctx context.Context) ([]entity.Program, error) {
-	query := `SELECT id, title, year, description, created_at FROM programs ORDER BY year DESC, title ASC`
-	rows, err := r.pool.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var programs []entity.Program
-	for rows.Next() {
-		var p entity.Program
-		err = rows.Scan(&p.ID, &p.Title, &p.Year, &p.Description, &p.CreatedAt)
-		if err != nil {
-			return nil, err
-		}
-		programs = append(programs, p)
-	}
-	return programs, nil
-}
-
 func (r *ApplicantRepo) StoreRecommendation(ctx context.Context, data entity.RecommendationData) error {
-	query := `INSERT INTO applicants_data_recommendation (applicant_id, document_id, author_name, author_position, author_institution, key_strengths, source, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.AuthorName, data.AuthorPosition, data.AuthorInstitution, data.KeyStrengths, data.Source, data.Version)
+	query := `INSERT INTO applicants_data_recommendation (applicant_id, document_id, author_name, author_position, author_institution, key_strengths, source) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.AuthorName, data.AuthorPosition, data.AuthorInstitution, data.KeyStrengths, data.Source)
 	return err
 }
 
 func (r *ApplicantRepo) StoreAchievement(ctx context.Context, data entity.AchievementData) error {
-	query := `INSERT INTO applicants_data_achievements (applicant_id, document_id, achievement_title, description, date_received, document_path, achievement_type, company, source, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
-	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.AchievementTitle, data.Description, data.DateReceived, data.DocumentPath, data.AchievementType, data.Company, data.Source, data.Version)
+	query := `INSERT INTO applicants_data_achievements (applicant_id, document_id, achievement_title, description, date_received, document_path, achievement_type, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.AchievementTitle, data.Description, data.DateReceived, data.DocumentPath, data.AchievementType, data.Source)
 	return err
 }
 
 func (r *ApplicantRepo) StoreLanguageTraining(ctx context.Context, data entity.LanguageTraining) error {
-	query := `INSERT INTO applicants_data_language_training (applicant_id, document_id, russian_level, english_level, certificate_path, exam_name, score, source, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.RussianLevel, data.EnglishLevel, data.CertificatePath, data.ExamName, data.Score, data.Source, data.Version)
+	query := `INSERT INTO applicants_data_language_training (applicant_id, document_id, russian_level, english_level, certificate_path, exam_name, score, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.RussianLevel, data.EnglishLevel, data.CertificatePath, data.ExamName, data.Score, data.Source)
 	return err
 }
 
 func (r *ApplicantRepo) StoreMotivation(ctx context.Context, data entity.MotivationData) error {
-	query := `INSERT INTO applicants_data_motivation (applicant_id, document_id, reasons_for_applying, experience_summary, career_goals, detected_language, main_text, source, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.ReasonsForApplying, data.ExperienceSummary, data.CareerGoals, data.DetectedLanguage, data.MainText, data.Source, data.Version)
+	query := `INSERT INTO applicants_data_motivation (applicant_id, document_id, reasons_for_applying, experience_summary, career_goals, detected_language, main_text, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.ReasonsForApplying, data.ExperienceSummary, data.CareerGoals, data.DetectedLanguage, data.MainText, data.Source)
 	return err
 }
 
 func (r *ApplicantRepo) GetLatestMotivation(ctx context.Context, applicantID int64) (entity.MotivationData, error) {
-	query := `SELECT id, applicant_id, document_id, COALESCE(reasons_for_applying, ''), COALESCE(experience_summary, ''), COALESCE(career_goals, ''), COALESCE(detected_language, ''), COALESCE(main_text, ''), source, version FROM applicants_data_motivation WHERE applicant_id=$1 ORDER BY version DESC, id DESC LIMIT 1`
+	query := `SELECT id, applicant_id, document_id, COALESCE(reasons_for_applying, ''), COALESCE(experience_summary, ''), COALESCE(career_goals, ''), COALESCE(detected_language, ''), COALESCE(main_text, ''), source FROM applicants_data_motivation WHERE applicant_id=$1 ORDER BY id DESC LIMIT 1`
 	var d entity.MotivationData
-	err := r.pool.QueryRow(ctx, query, applicantID).Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.ReasonsForApplying, &d.ExperienceSummary, &d.CareerGoals, &d.DetectedLanguage, &d.MainText, &d.Source, &d.Version)
+	err := r.pool.QueryRow(ctx, query, applicantID).Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.ReasonsForApplying, &d.ExperienceSummary, &d.CareerGoals, &d.DetectedLanguage, &d.MainText, &d.Source)
 	if err != nil {
 		if err.Error() == "no rows in result set" || err.Error() == "pgx: no rows in result set" {
 			return d, nil
@@ -419,9 +345,9 @@ func (r *ApplicantRepo) GetLatestMotivation(ctx context.Context, applicantID int
 }
 
 func (r *ApplicantRepo) StoreTranscript(ctx context.Context, data entity.TranscriptData) error {
-	query := `INSERT INTO applicants_data_transcript 
-		(applicant_id, document_id, cumulative_gpa, cumulative_grade, total_credits, obtained_credits, total_semesters, source, version) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	query := `INSERT INTO applicants_data_transcript
+		(applicant_id, document_id, cumulative_gpa, cumulative_grade, total_credits, obtained_credits, total_semesters, source)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (document_id) DO UPDATE SET
 			applicant_id = EXCLUDED.applicant_id,
 			cumulative_gpa = EXCLUDED.cumulative_gpa,
@@ -430,26 +356,24 @@ func (r *ApplicantRepo) StoreTranscript(ctx context.Context, data entity.Transcr
 			obtained_credits = EXCLUDED.obtained_credits,
 			total_semesters = EXCLUDED.total_semesters,
 			source = EXCLUDED.source,
-			version = EXCLUDED.version,
 			created_at = NOW()`
-	_, err := r.pool.Exec(ctx, query, 
-		data.ApplicantID, data.DocumentID, data.CumulativeGPA, data.CumulativeGrade, 
-		data.TotalCredits, data.ObtainedCredits, data.TotalSemesters, data.Source, data.Version)
+	_, err := r.pool.Exec(ctx, query,
+		data.ApplicantID, data.DocumentID, data.CumulativeGPA, data.CumulativeGrade,
+		data.TotalCredits, data.ObtainedCredits, data.TotalSemesters, data.Source)
 	return err
 }
 
 func (r *ApplicantRepo) GetTranscriptByDocumentID(ctx context.Context, documentID int64) (entity.TranscriptData, error) {
-	query := `SELECT id, applicant_id, document_id, 
-		cumulative_gpa, cumulative_grade, total_credits, obtained_credits, 
-		total_semesters, source, version FROM applicants_data_transcript WHERE document_id=$1 LIMIT 1`
+	query := `SELECT id, applicant_id, document_id,
+		cumulative_gpa, cumulative_grade, total_credits, obtained_credits,
+		total_semesters, source FROM applicants_data_transcript WHERE document_id=$1 LIMIT 1`
 	var d entity.TranscriptData
 	err := r.pool.QueryRow(ctx, query, documentID).Scan(
-		&d.ID, &d.ApplicantID, &d.DocumentID, &d.CumulativeGPA, &d.CumulativeGrade, 
-		&d.TotalCredits, &d.ObtainedCredits, &d.TotalSemesters, &d.Source, &d.Version,
+		&d.ID, &d.ApplicantID, &d.DocumentID, &d.CumulativeGPA, &d.CumulativeGrade,
+		&d.TotalCredits, &d.ObtainedCredits, &d.TotalSemesters, &d.Source,
 	)
 	return d, err
 }
-
 
 func (r *ApplicantRepo) DeleteWorkExperience(ctx context.Context, id int64) error {
 	query := `DELETE FROM applicants_data_work_experience WHERE id=$1`
@@ -475,17 +399,11 @@ func (r *ApplicantRepo) DeleteLanguageTraining(ctx context.Context, id int64) er
 	return err
 }
 
-func (r *ApplicantRepo) DeleteDocument(ctx context.Context, id int64) error {
-	query := `DELETE FROM applicants_document WHERE id=$1`
-	_, err := r.pool.Exec(ctx, query, id)
-	return err
-}
-
 func (r *ApplicantRepo) UpdateIdentification(ctx context.Context, data entity.IdentificationData) error {
-	query := `UPDATE applicants_data_identification SET 
-		name=$1, surname=$2, patronymic=$3, email=$4, phone=$5, 
-		document_number=$6, date_of_birth=$7, gender=$8, nationality=$9, 
-		source=$10 
+	query := `UPDATE applicants_data_identification SET
+		name=$1, surname=$2, patronymic=$3, email=$4, phone=$5,
+		document_number=$6, date_of_birth=$7, gender=$8, nationality=$9,
+		source=$10
 		WHERE id=$11`
 	_, err := r.pool.Exec(ctx, query,
 		data.Name, data.Surname, data.Patronymic, data.Email, data.Phone,
@@ -496,9 +414,9 @@ func (r *ApplicantRepo) UpdateIdentification(ctx context.Context, data entity.Id
 }
 
 func (r *ApplicantRepo) UpdateEducation(ctx context.Context, data entity.EducationData) error {
-	query := `UPDATE applicants_data_education SET 
-		institution_name=$1, degree_title=$2, major=$3, graduation_date=$4, 
-		diploma_serial_number=$5, source=$6 
+	query := `UPDATE applicants_data_education SET
+		institution_name=$1, degree_title=$2, major=$3, graduation_date=$4,
+		diploma_serial_number=$5, source=$6
 		WHERE id=$7`
 	_, err := r.pool.Exec(ctx, query,
 		data.InstitutionName, data.DegreeTitle, data.Major, data.GraduationDate,
@@ -508,9 +426,9 @@ func (r *ApplicantRepo) UpdateEducation(ctx context.Context, data entity.Educati
 }
 
 func (r *ApplicantRepo) UpdateTranscript(ctx context.Context, data entity.TranscriptData) error {
-	query := `UPDATE applicants_data_transcript SET 
-		cumulative_gpa=$1, cumulative_grade=$2, total_credits=$3, 
-		obtained_credits=$4, total_semesters=$5, source=$6 
+	query := `UPDATE applicants_data_transcript SET
+		cumulative_gpa=$1, cumulative_grade=$2, total_credits=$3,
+		obtained_credits=$4, total_semesters=$5, source=$6
 		WHERE id=$7`
 	_, err := r.pool.Exec(ctx, query,
 		data.CumulativeGPA, data.CumulativeGrade, data.TotalCredits,
@@ -520,9 +438,9 @@ func (r *ApplicantRepo) UpdateTranscript(ctx context.Context, data entity.Transc
 }
 
 func (r *ApplicantRepo) UpdateWorkExperience(ctx context.Context, data entity.WorkExperience) error {
-	query := `UPDATE applicants_data_work_experience SET 
-		company_name=$1, position=$2, start_date=$3, end_date=$4, 
-		country=$5, city=$6, record_type=$7, source=$8 
+	query := `UPDATE applicants_data_work_experience SET
+		company_name=$1, position=$2, start_date=$3, end_date=$4,
+		country=$5, city=$6, record_type=$7, source=$8
 		WHERE id=$9`
 	_, err := r.pool.Exec(ctx, query,
 		data.CompanyName, data.Position, data.StartDate, data.EndDate,
@@ -532,9 +450,9 @@ func (r *ApplicantRepo) UpdateWorkExperience(ctx context.Context, data entity.Wo
 }
 
 func (r *ApplicantRepo) UpdateRecommendation(ctx context.Context, data entity.RecommendationData) error {
-	query := `UPDATE applicants_data_recommendation SET 
-		author_name=$1, author_position=$2, author_institution=$3, 
-		key_strengths=$4, source=$5 
+	query := `UPDATE applicants_data_recommendation SET
+		author_name=$1, author_position=$2, author_institution=$3,
+		key_strengths=$4, source=$5
 		WHERE id=$6`
 	_, err := r.pool.Exec(ctx, query,
 		data.AuthorName, data.AuthorPosition, data.AuthorInstitution,
@@ -544,21 +462,21 @@ func (r *ApplicantRepo) UpdateRecommendation(ctx context.Context, data entity.Re
 }
 
 func (r *ApplicantRepo) UpdateAchievement(ctx context.Context, data entity.AchievementData) error {
-	query := `UPDATE applicants_data_achievements SET 
-		achievement_title=$1, description=$2, date_received=$3, 
-		achievement_type=$4, company=$5, source=$6 
-		WHERE id=$7`
+	query := `UPDATE applicants_data_achievements SET
+		achievement_title=$1, description=$2, date_received=$3,
+		achievement_type=$4, source=$5
+		WHERE id=$6`
 	_, err := r.pool.Exec(ctx, query,
 		data.AchievementTitle, data.Description, data.DateReceived,
-		data.AchievementType, data.Company, data.Source, data.ID,
+		data.AchievementType, data.Source, data.ID,
 	)
 	return err
 }
 
 func (r *ApplicantRepo) UpdateLanguageTraining(ctx context.Context, data entity.LanguageTraining) error {
-	query := `UPDATE applicants_data_language_training SET 
-		russian_level=$1, english_level=$2, exam_name=$3, 
-		score=$4, source=$5 
+	query := `UPDATE applicants_data_language_training SET
+		russian_level=$1, english_level=$2, exam_name=$3,
+		score=$4, source=$5
 		WHERE id=$6`
 	_, err := r.pool.Exec(ctx, query,
 		data.RussianLevel, data.EnglishLevel, data.ExamName,
@@ -568,22 +486,15 @@ func (r *ApplicantRepo) UpdateLanguageTraining(ctx context.Context, data entity.
 }
 
 func (r *ApplicantRepo) UpdateMotivation(ctx context.Context, data entity.MotivationData) error {
-	query := `UPDATE applicants_data_motivation SET 
-		reasons_for_applying=$1, experience_summary=$2, career_goals=$3, 
-		detected_language=$4, main_text=$5, source=$6 
+	query := `UPDATE applicants_data_motivation SET
+		reasons_for_applying=$1, experience_summary=$2, career_goals=$3,
+		detected_language=$4, main_text=$5, source=$6
 		WHERE id=$7`
 	_, err := r.pool.Exec(ctx, query,
 		data.ReasonsForApplying, data.ExperienceSummary, data.CareerGoals,
 		data.DetectedLanguage, data.MainText, data.Source, data.ID,
 	)
 	return err
-}
-
-func (r *ApplicantRepo) GetProgramByID(ctx context.Context, id int64) (entity.Program, error) {
-	query := `SELECT id, title, year, description, created_at FROM programs WHERE id=$1`
-	var p entity.Program
-	err := r.pool.QueryRow(ctx, query, id).Scan(&p.ID, &p.Title, &p.Year, &p.Description, &p.CreatedAt)
-	return p, err
 }
 
 func (r *ApplicantRepo) DeleteDataByDocumentID(ctx context.Context, category string, documentID int64) error {
@@ -610,224 +521,75 @@ func (r *ApplicantRepo) DeleteDataByDocumentID(ctx context.Context, category str
 	case "certification":
 		query = `DELETE FROM applicants_data_achievements WHERE document_id=$1`
 	case "resume":
-		// Resume affects multiple tables
 		_, _ = r.pool.Exec(ctx, `DELETE FROM applicants_data_identification WHERE document_id=$1`, documentID)
 		_, _ = r.pool.Exec(ctx, `DELETE FROM applicants_data_work_experience WHERE document_id=$1`, documentID)
 		_, _ = r.pool.Exec(ctx, `DELETE FROM applicants_data_achievements WHERE document_id=$1`, documentID)
 		return nil
 	default:
-		// Try a generic cleanup if we have document_id but don't know the category for sure?
-		// Better to be explicit here.
 		return nil
 	}
 	_, err := r.pool.Exec(ctx, query, documentID)
 	return err
 }
 
-func (r *ApplicantRepo) StoreEvaluation(ctx context.Context, eval entity.ExpertEvaluation) error {
-	query := `INSERT INTO expert_evaluations 
-		(applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, source_info) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-	_, err := r.pool.Exec(ctx, query,
-		eval.ApplicantID, eval.ExpertID, eval.Category, eval.Score, eval.Comment, eval.Status,
-		eval.UpdatedByID, eval.IsAdminOverride, eval.SourceInfo,
-	)
-	return err
-}
-
-func (r *ApplicantRepo) UpdateEvaluation(ctx context.Context, eval entity.ExpertEvaluation) error {
-	query := `UPDATE expert_evaluations SET 
-		score=$1, comment=$2, status=$3, updated_by_id=$4, is_admin_override=$5, source_info=$6, updated_at=NOW() 
-		WHERE applicant_id=$7 AND expert_id=$8 AND category=$9`
-	_, err := r.pool.Exec(ctx, query,
-		eval.Score, eval.Comment, eval.Status, eval.UpdatedByID, eval.IsAdminOverride, eval.SourceInfo,
-		eval.ApplicantID, eval.ExpertID, eval.Category,
-	)
-	return err
-}
-
-func (r *ApplicantRepo) UpdateEvaluationStatus(ctx context.Context, applicantID int64, expertID string, status string) error {
-	query := `UPDATE expert_evaluations SET status=$1, updated_at=NOW() WHERE applicant_id=$2 AND expert_id=$3`
-	_, err := r.pool.Exec(ctx, query, status, applicantID, expertID)
-	return err
-}
-
-func (r *ApplicantRepo) ListEvaluations(ctx context.Context, applicantID int64) ([]entity.ExpertEvaluation, error) {
-	query := `SELECT id, applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, source_info, created_at, updated_at 
-		FROM expert_evaluations WHERE applicant_id=$1`
-	rows, err := r.pool.Query(ctx, query, applicantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	evals := make([]entity.ExpertEvaluation, 0)
-	for rows.Next() {
-		var e entity.ExpertEvaluation
-		err := rows.Scan(&e.ID, &e.ApplicantID, &e.ExpertID, &e.Category, &e.Score, &e.Comment, &e.Status, &e.UpdatedByID, &e.IsAdminOverride, &e.SourceInfo, &e.CreatedAt, &e.UpdatedAt)
-		if err != nil {
-			return nil, err
-		}
-		evals = append(evals, e)
-	}
-	return evals, nil
-}
-
-func (r *ApplicantRepo) GetEvaluation(ctx context.Context, applicantID int64, expertID string, category string) (entity.ExpertEvaluation, error) {
-	query := `SELECT id, applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, source_info, created_at, updated_at 
-		FROM expert_evaluations WHERE applicant_id = $1 AND expert_id = $2 AND category = $3`
-	var e entity.ExpertEvaluation
-	err := r.pool.QueryRow(ctx, query, applicantID, expertID, category).Scan(
-		&e.ID, &e.ApplicantID, &e.ExpertID, &e.Category, &e.Score, &e.Comment, &e.Status, &e.UpdatedByID, &e.IsAdminOverride, &e.SourceInfo, &e.CreatedAt, &e.UpdatedAt,
-	)
-	return e, err
-}
-
-func (r *ApplicantRepo) GetCriteria(ctx context.Context) ([]entity.EvaluationCriteria, error) {
-	query := `SELECT code, title, max_score, type FROM evaluation_criteria ORDER BY type, code`
-	rows, err := r.pool.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var criteria []entity.EvaluationCriteria
-	for rows.Next() {
-		var c entity.EvaluationCriteria
-		if err := rows.Scan(&c.Code, &c.Title, &c.MaxScore, &c.Type); err != nil {
-			return nil, err
-		}
-		criteria = append(criteria, c)
-	}
-	return criteria, nil
-}
-
-func (r *ApplicantRepo) SaveEvaluationBatch(ctx context.Context, evaluations []entity.ExpertEvaluation) error {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	for _, eval := range evaluations {
-		query := `INSERT INTO expert_evaluations 
-			(applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, source_info) 
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			ON CONFLICT (applicant_id, expert_id, category) DO UPDATE SET
-			score=EXCLUDED.score, comment=EXCLUDED.comment, status=EXCLUDED.status, 
-			updated_by_id=EXCLUDED.updated_by_id, is_admin_override=EXCLUDED.is_admin_override, 
-			source_info=EXCLUDED.source_info, updated_at=NOW()`
-		
-		_, err := tx.Exec(ctx, query,
-			eval.ApplicantID, eval.ExpertID, eval.Category, eval.Score, eval.Comment, eval.Status,
-			eval.UpdatedByID, eval.IsAdminOverride, eval.SourceInfo,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit(ctx)
-}
-
-func (r *ApplicantRepo) GetAggregatedScore(ctx context.Context, applicantID int64) (float64, error) {
-	// Rule: If ENGLISH_LANG score is 0, total score is 0 for that expert.
-	// We need to calculate average of (sum of BASE scores + ALTERNATIVE scores) per expert,
-	// but applying the Zero English rule per expert.
-	
-	query := `
-		WITH expert_sums AS (
-			SELECT 
-				expert_id,
-				SUM(score) as total_score,
-				MAX(CASE WHEN category = 'ENGLISH_LANG' AND score = 0 THEN 1 ELSE 0 END) as is_english_zero
-			FROM expert_evaluations
-			WHERE applicant_id = $1 AND status = 'COMPLETED'
-			GROUP BY expert_id
-		)
-		SELECT COALESCE(AVG(CASE WHEN is_english_zero = 1 THEN 0 ELSE total_score END), 0)
-		FROM expert_sums
-	`
-	var avgScore float64
-	err := r.pool.QueryRow(ctx, query, applicantID).Scan(&avgScore)
-	return avgScore, err
-}
-
 func (r *ApplicantRepo) UpdateApplicantRanking(ctx context.Context, applicantID int64, score float64, status string) error {
-	query := `UPDATE applicants SET aggregated_score=$1, evaluation_status=$2, updated_at=NOW() WHERE id=$3`
+	query := `UPDATE applicants SET aggregated_score=$1, status=$2, updated_at=NOW() WHERE id=$3`
 	_, err := r.pool.Exec(ctx, query, score, status, applicantID)
 	return err
 }
 
-func (r *ApplicantRepo) GetExpertSlots(ctx context.Context) ([]entity.ExpertSlot, error) {
-	query := `
-		SELECT s.user_id, s.slot_number, u.first_name, u.last_name, s.created_at 
-		FROM expert_slots s
-		LEFT JOIN users u ON s.user_id = u.id
-		ORDER BY s.slot_number ASC`
-	rows, err := r.pool.Query(ctx, query)
+func (r *ApplicantRepo) GetLatestVideo(ctx context.Context, applicantID int64) (entity.VideoData, error) {
+	query := `SELECT id, applicant_id, video_url, source, created_at FROM applicants_data_video WHERE applicant_id=$1 ORDER BY id DESC LIMIT 1`
+	var d entity.VideoData
+	err := r.pool.QueryRow(ctx, query, applicantID).Scan(&d.ID, &d.ApplicantID, &d.VideoURL, &d.Source, &d.CreatedAt)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return d, nil
+		}
+		return d, err
 	}
-	defer rows.Close()
-
-	slots := make([]entity.ExpertSlot, 0)
-	for rows.Next() {
-		var s entity.ExpertSlot
-		// Note: first_name and last_name might be NULL if user is not found (LEFT JOIN)
-		var firstName, lastName *string
-		err := rows.Scan(&s.UserID, &s.SlotNumber, &firstName, &lastName, &s.CreatedAt)
-		if err != nil {
-			return nil, err
-		}
-		if firstName != nil {
-			s.FirstName = *firstName
-		}
-		if lastName != nil {
-			s.LastName = *lastName
-		}
-		slots = append(slots, s)
-	}
-	return slots, nil
+	return d, nil
 }
 
-func (r *ApplicantRepo) AssignExpertSlot(ctx context.Context, userID string, slotNumber int) error {
-	fmt.Printf("[DEBUG] Repo AssignExpertSlot: userID=%s, slotNumber=%d\n", userID, slotNumber)
-	query := `INSERT INTO expert_slots (user_id, slot_number) VALUES ($1, $2) 
-		ON CONFLICT (slot_number) DO UPDATE SET user_id = EXCLUDED.user_id`
-	_, err := r.pool.Exec(ctx, query, userID, slotNumber)
+func (r *ApplicantRepo) UpdateVideo(ctx context.Context, data entity.VideoData) error {
+	query := `INSERT INTO applicants_data_video (applicant_id, video_url, source) VALUES ($1, $2, $3)`
+	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.VideoURL, data.Source)
 	return err
 }
 
-func (r *ApplicantRepo) RemoveExpertSlot(ctx context.Context, slotNumber int) error {
-	query := `DELETE FROM expert_slots WHERE slot_number=$1`
-	_, err := r.pool.Exec(ctx, query, slotNumber)
+func (r *ApplicantRepo) GetScoringScheme(ctx context.Context, applicantID int64) (string, error) {
+	var scheme string
+	err := r.pool.QueryRow(ctx, `SELECT scoring_scheme FROM applicants WHERE id=$1`, applicantID).Scan(&scheme)
+	if err != nil {
+		return "auto", err
+	}
+	return scheme, nil
+}
+
+func (r *ApplicantRepo) SetScoringScheme(ctx context.Context, applicantID int64, scheme string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE applicants SET scoring_scheme=$1 WHERE id=$2`, scheme, applicantID)
 	return err
 }
 
-func (r *ApplicantRepo) GetExpertSlotByUserID(ctx context.Context, userID string) (entity.ExpertSlot, error) {
-	query := `SELECT user_id, slot_number, created_at FROM expert_slots WHERE user_id=$1`
-	var s entity.ExpertSlot
-	err := r.pool.QueryRow(ctx, query, userID).Scan(&s.UserID, &s.SlotNumber, &s.CreatedAt)
-	return s, err
-}
-
-func (r *ApplicantRepo) GetUsersByRoles(ctx context.Context, roles []string) ([]entity.User, error) {
-	query := `SELECT id, first_name, last_name, email, role FROM users WHERE role = ANY($1) ORDER BY first_name ASC`
-	rows, err := r.pool.Query(ctx, query, roles)
-	if err != nil {
-		return nil, err
+// ConfirmModelData updates source from 'model' to confirmedBy across all data tables for the applicant.
+func (r *ApplicantRepo) ConfirmModelData(ctx context.Context, applicantID int64, confirmedBy string) error {
+	tables := []string{
+		"applicants_data_identification",
+		"applicants_data_education",
+		"applicants_data_transcript",
+		"applicants_data_work_experience",
+		"applicants_data_language_training",
+		"applicants_data_motivation",
+		"applicants_data_recommendation",
+		"applicants_data_achievements",
+		"applicants_data_resume",
+		"applicants_data_video",
 	}
-	defer rows.Close()
-
-	var users []entity.User
-	for rows.Next() {
-		var u entity.User
-		err := rows.Scan(&u.ID, &u.FirstName, &u.LastName, &u.Email, &u.Role)
-		if err != nil {
-			return nil, err
+	for _, table := range tables {
+		q := fmt.Sprintf(`UPDATE %s SET source=$1 WHERE applicant_id=$2 AND source='model'`, table)
+		if _, err := r.pool.Exec(ctx, q, confirmedBy, applicantID); err != nil {
+			return fmt.Errorf("ConfirmModelData(%s): %w", table, err)
 		}
-		users = append(users, u)
 	}
-	return users, nil
+	return nil
 }

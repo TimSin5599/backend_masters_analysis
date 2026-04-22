@@ -3,7 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
-	"manage-service/internal/entity"
+	"manage-service/internal/domain/entity"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -34,6 +35,33 @@ func (r *DocumentQueueRepo) UpdateStatus(ctx context.Context, id string, status 
 		return fmt.Errorf("DocumentQueueRepo.UpdateStatus: %w", err)
 	}
 	return nil
+}
+
+// GetStuckTasks returns tasks with status "processing" or "pending" that haven't
+// been updated for longer than olderThan. Used by the recovery worker on startup.
+func (r *DocumentQueueRepo) GetStuckTasks(ctx context.Context, olderThan time.Duration) ([]entity.DocumentQueueTask, error) {
+	cutoff := time.Now().Add(-olderThan)
+	sql := `SELECT id, applicant_id, document_category, file_path, priority, status, error_message, created_at, updated_at
+	        FROM document_processing_queue
+	        WHERE status IN ('processing', 'pending')
+	        AND updated_at < $1
+	        ORDER BY priority DESC, created_at ASC`
+
+	rows, err := r.Pool.Query(ctx, sql, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("DocumentQueueRepo.GetStuckTasks: %w", err)
+	}
+	defer rows.Close()
+
+	var tasks []entity.DocumentQueueTask
+	for rows.Next() {
+		var t entity.DocumentQueueTask
+		if err := rows.Scan(&t.ID, &t.ApplicantID, &t.DocumentCategory, &t.FilePath, &t.Priority, &t.Status, &t.ErrorMessage, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("DocumentQueueRepo.GetStuckTasks row scan: %w", err)
+		}
+		tasks = append(tasks, t)
+	}
+	return tasks, nil
 }
 
 func (r *DocumentQueueRepo) GetByApplicantID(ctx context.Context, applicantID int64) ([]entity.DocumentQueueTask, error) {

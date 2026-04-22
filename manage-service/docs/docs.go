@@ -17,7 +17,12 @@ const docTemplate = `{
     "paths": {
         "/v1/applicants": {
             "get": {
-                "description": "Получаем список абитуриентов",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает список абитуриентов. Можно фильтровать по ID программы.",
                 "produces": [
                     "application/json"
                 ],
@@ -28,7 +33,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Фильтр по ID программы",
+                        "description": "ID образовательной программы для фильтрации",
                         "name": "program_id",
                         "in": "query"
                     }
@@ -55,7 +60,12 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Добавить нового абитуриента",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Создаёт нового абитуриента и привязывает его к образовательной программе.",
                 "consumes": [
                     "application/json"
                 ],
@@ -65,21 +75,21 @@ const docTemplate = `{
                 "tags": [
                     "applicants"
                 ],
-                "summary": "Создать абитуриента",
+                "summary": "Создание абитуриента",
                 "parameters": [
                     {
-                        "description": "Данные абитуриента",
-                        "name": "request",
+                        "description": "Данные нового абитуриента",
+                        "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/v1.createApplicantRequest"
+                            "$ref": "#/definitions/handlers.createApplicantRequest"
                         }
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "201": {
+                        "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/entity.Applicant"
                         }
@@ -107,10 +117,12 @@ const docTemplate = `{
         },
         "/v1/applicants/{id}": {
             "delete": {
-                "description": "Полностью удаляет абитуриента и связанные с ним данные из системы",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Удаляет абитуриента и все связанные с ним данные по ID.",
                 "produces": [
                     "application/json"
                 ],
@@ -158,16 +170,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/applicants/{id}/criteria": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает список всех критериев экспертной оценки. ID абитуриента в пути используется для валидации.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "experts"
+                ],
+                "summary": "Получение критериев оценки",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID абитуриента",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entity.EvaluationCriteria"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/applicants/{id}/data": {
             "get": {
-                "description": "Получить данные (парсинг) из документа абитуриента",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает структурированные данные абитуриента по указанной категории (identification, education, transcript и т.д.).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "applicants"
                 ],
-                "summary": "Получить данные документа",
+                "summary": "Данные абитуриента по категории",
                 "parameters": [
                     {
                         "type": "integer",
@@ -178,19 +250,15 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Категория документа",
+                        "description": "Категория данных",
                         "name": "category",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
+                        "schema": {}
                     },
                     "400": {
                         "description": "Bad Request",
@@ -213,7 +281,12 @@ const docTemplate = `{
                 }
             },
             "patch": {
-                "description": "Обновить данные абитуриента для категории",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Обновляет данные абитуриента по указанной категории. Принимает произвольный JSON-объект.",
                 "consumes": [
                     "application/json"
                 ],
@@ -223,7 +296,7 @@ const docTemplate = `{
                 "tags": [
                     "applicants"
                 ],
-                "summary": "Обновить данные документа",
+                "summary": "Обновление данных абитуриента",
                 "parameters": [
                     {
                         "type": "integer",
@@ -234,14 +307,13 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Категория документа",
+                        "description": "Категория данных",
                         "name": "category",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
                     },
                     {
-                        "description": "Обновленные данные",
-                        "name": "request",
+                        "description": "Обновлённые данные",
+                        "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -283,10 +355,12 @@ const docTemplate = `{
         },
         "/v1/applicants/{id}/data/{category}/{dataId}": {
             "delete": {
-                "description": "Удаляет конкретную запись о данных абитуриенте",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Удаляет конкретную запись данных абитуриента (например, запись о работе или достижении) по категории и ID записи.",
                 "produces": [
                     "application/json"
                 ],
@@ -304,14 +378,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Категория данных",
+                        "description": "Категория данных (work_experience, achievements и т.д.)",
                         "name": "category",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "integer",
-                        "description": "ID данных",
+                        "description": "ID записи",
                         "name": "dataId",
                         "in": "path",
                         "required": true
@@ -349,8 +423,66 @@ const docTemplate = `{
             }
         },
         "/v1/applicants/{id}/documents": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает список всех загруженных документов абитуриента с их метаданными и статусами обработки.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Список документов абитуриента",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID абитуриента",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entity.Document"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "post": {
-                "description": "Загрузка документа для абитуриента",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Загружает файл документа для абитуриента, сохраняет в MinIO и запускает очередь AI-обработки.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -358,9 +490,9 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "applicants"
+                    "documents"
                 ],
-                "summary": "Загрузить документ",
+                "summary": "Загрузка документа",
                 "parameters": [
                     {
                         "type": "integer",
@@ -377,8 +509,14 @@ const docTemplate = `{
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "Тип документа (например, для профессиональной переподготовки)",
+                        "name": "doc_type",
+                        "in": "formData"
+                    },
+                    {
                         "type": "file",
-                        "description": "Документ",
+                        "description": "Файл документа (PDF)",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -417,15 +555,17 @@ const docTemplate = `{
         },
         "/v1/applicants/{id}/documents/reprocess": {
             "post": {
-                "description": "Повторная обработка последнего загруженного документа абитуриента по категории",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Запускает повторное AI-извлечение для последнего загруженного документа абитуриента по указанной категории.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "applicants"
+                    "documents"
                 ],
                 "summary": "Повторная обработка последнего документа",
                 "parameters": [
@@ -449,7 +589,9 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": true
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "400": {
@@ -475,14 +617,19 @@ const docTemplate = `{
         },
         "/v1/applicants/{id}/documents/view": {
             "get": {
-                "description": "Возвращает последний документ абитуриента по категории",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает содержимое последнего загруженного файла по ID абитуриента и категории. Content-Type определяется типом файла.",
                 "produces": [
                     "application/octet-stream"
                 ],
                 "tags": [
-                    "applicants"
+                    "documents"
                 ],
-                "summary": "Просмотр документа абитуриента",
+                "summary": "Просмотр последнего документа абитуриента",
                 "parameters": [
                     {
                         "type": "integer",
@@ -527,9 +674,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/applicants/{id}/documents/{docId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Удаляет документ и все связанные с ним извлечённые данные по ID абитуриента и ID документа.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Удаление документа",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID абитуриента",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID документа",
+                        "name": "docId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/applicants/{id}/evaluations": {
             "get": {
-                "description": "Возвращает все оценки для абитуриента",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает список экспертных оценок по абитуриенту. Результат фильтруется по роли пользователя: эксперт видит только свои оценки, администратор — все.",
                 "produces": [
                     "application/json"
                 ],
@@ -544,6 +758,18 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID текущего пользователя",
+                        "name": "user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Роль текущего пользователя",
+                        "name": "user_role",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -555,11 +781,25 @@ const docTemplate = `{
                                 "$ref": "#/definitions/entity.ExpertEvaluation"
                             }
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             },
-            "post": {
-                "description": "Сохраняет или обновляет оценку за категорию документа. Лимит 3 эксперта на систему.",
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Сохраняет или обновляет оценки эксперта по критериям для указанного абитуриента. Завершённую оценку изменить нельзя.",
                 "consumes": [
                     "application/json"
                 ],
@@ -569,7 +809,7 @@ const docTemplate = `{
                 "tags": [
                     "experts"
                 ],
-                "summary": "Сохранить оценку эксперта",
+                "summary": "Сохранение экспертной оценки",
                 "parameters": [
                     {
                         "type": "integer",
@@ -580,11 +820,11 @@ const docTemplate = `{
                     },
                     {
                         "description": "Данные оценки",
-                        "name": "request",
+                        "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/v1.expertEvaluationRequest"
+                            "$ref": "#/definitions/handlers.expertEvaluationRequest"
                         }
                     }
                 ],
@@ -597,20 +837,52 @@ const docTemplate = `{
                                 "type": "string"
                             }
                         }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
         },
         "/v1/applicants/{id}/queue-status": {
             "get": {
-                "description": "Возвращает массив статусов очереди для абитуриента",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает список задач в очереди AI-обработки документов для указанного абитуриента.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "applicants"
+                    "documents"
                 ],
-                "summary": "Получить статус очереди документов",
+                "summary": "Статус очереди обработки",
                 "parameters": [
                     {
                         "type": "integer",
@@ -651,13 +923,21 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/applicants/{id}/ws": {
-            "get": {
-                "description": "Endpoint для инициализации WebSocket соединения",
+        "/v1/applicants/{id}/transfer-to-experts": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Переводит абитуриента на этап экспертной оценки (изменяет статус заявки).",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "applicants"
                 ],
-                "summary": "Подключение к WebSocket",
+                "summary": "Передача абитуриента экспертам",
                 "parameters": [
                     {
                         "type": "integer",
@@ -667,22 +947,196 @@ const docTemplate = `{
                         "required": true
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
-        "/v1/documents/{id}/reprocess": {
+        "/v1/applicants/{id}/transfer-to-operator": {
             "post": {
-                "description": "Запускает повторную обработку конкретного документа",
-                "consumes": [
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Переводит абитуриента на этап проверки оператором (изменяет статус заявки).",
+                "produces": [
                     "application/json"
                 ],
+                "tags": [
+                    "applicants"
+                ],
+                "summary": "Передача абитуриента оператору",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID абитуриента",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/applicants/{id}/ws": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Устанавливает WebSocket-соединение для получения обновлений статуса обработки документов абитуриента в реальном времени.",
+                "tags": [
+                    "applicants"
+                ],
+                "summary": "WebSocket соединение",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID абитуриента",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "101": {
+                        "description": "Switching Protocols",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/documents/{id}/category": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Меняет категорию документа на новую и запускает его повторную обработку.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "documents"
                 ],
-                "summary": "Повторная обработка документа",
+                "summary": "Изменение категории документа",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID документа",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Новая категория: { \\",
+                        "name": "category",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/documents/{id}/reprocess": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Запускает повторное AI-извлечение для конкретного документа по его ID.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Повторная обработка документа по ID",
                 "parameters": [
                     {
                         "type": "integer",
@@ -725,10 +1179,12 @@ const docTemplate = `{
         },
         "/v1/documents/{id}/status": {
             "get": {
-                "description": "Получаем статус обработки документа",
-                "consumes": [
-                    "application/json"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
+                "description": "Возвращает текущий статус обработки документа по его ID.",
                 "produces": [
                     "application/json"
                 ],
@@ -750,7 +1206,9 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": true
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "400": {
@@ -776,7 +1234,12 @@ const docTemplate = `{
         },
         "/v1/documents/{id}/view": {
             "get": {
-                "description": "Возвращает файл документа по его ID",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает содержимое файла документа напрямую (inline) по ID документа. Content-Type определяется типом файла.",
                 "produces": [
                     "application/octet-stream"
                 ],
@@ -823,7 +1286,12 @@ const docTemplate = `{
         },
         "/v1/experts": {
             "get": {
-                "description": "Возвращает список всех пользователей с ролью эксперта или наблюдателя",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает список всех пользователей с ролью эксперта.",
                 "produces": [
                     "application/json"
                 ],
@@ -840,13 +1308,27 @@ const docTemplate = `{
                                 "$ref": "#/definitions/entity.User"
                             }
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
         },
         "/v1/experts/slots": {
             "get": {
-                "description": "Возвращает 3 слота экспертов и назначенных на них пользователей",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает все слоты назначения экспертов с их статусами.",
                 "produces": [
                     "application/json"
                 ],
@@ -863,11 +1345,25 @@ const docTemplate = `{
                                 "$ref": "#/definitions/entity.ExpertSlot"
                             }
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             },
             "post": {
-                "description": "Закрепляет пользователя за слотом Эксперт 1, 2 или 3.",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Назначает пользователя на указанный слот эксперта. Доступно только администратору.",
                 "consumes": [
                     "application/json"
                 ],
@@ -877,15 +1373,15 @@ const docTemplate = `{
                 "tags": [
                     "experts"
                 ],
-                "summary": "Назначить эксперта на слот",
+                "summary": "Назначение эксперта на слот",
                 "parameters": [
                     {
-                        "description": "Данные слота",
-                        "name": "request",
+                        "description": "Данные назначения",
+                        "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/v1.assignSlotRequest"
+                            "$ref": "#/definitions/handlers.assignSlotRequest"
                         }
                     }
                 ],
@@ -898,13 +1394,36 @@ const docTemplate = `{
                                 "type": "string"
                             }
                         }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
         },
         "/v1/programs": {
             "get": {
-                "description": "Получаем список образовательных программ",
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Получение списка доступных магистерских программ с пагинацией (по умолчанию limit=100)",
                 "produces": [
                     "application/json"
                 ],
@@ -912,6 +1431,14 @@ const docTemplate = `{
                     "programs"
                 ],
                 "summary": "Список программ",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Количество записей (по умолчанию 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -936,14 +1463,19 @@ const docTemplate = `{
         },
         "/v1/programs/{id}": {
             "get": {
-                "description": "Получение информации о программе",
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Получение информации об образовательной программе по ID",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "programs"
                 ],
-                "summary": "Получение программы",
+                "summary": "Информация о программе",
                 "parameters": [
                     {
                         "type": "integer",
@@ -958,6 +1490,15 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/entity.Program"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
@@ -977,7 +1518,13 @@ const docTemplate = `{
         "entity.Applicant": {
             "type": "object",
             "properties": {
+                "aggregated_score": {
+                    "type": "number"
+                },
                 "created_at": {
+                    "type": "string"
+                },
+                "evaluation_status": {
                     "type": "string"
                 },
                 "first_name": {
@@ -996,12 +1543,39 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "score": {
+                    "description": "Maps to aggregated_score for legacy compatibility",
                     "type": "number"
                 },
                 "status": {
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.Document": {
+            "type": "object",
+            "properties": {
+                "applicant_id": {
+                    "type": "integer"
+                },
+                "file_name": {
+                    "type": "string"
+                },
+                "file_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "storage_path": {
+                    "type": "string"
+                },
+                "uploaded_at": {
                     "type": "string"
                 }
             }
@@ -1038,6 +1612,24 @@ const docTemplate = `{
                 }
             }
         },
+        "entity.EvaluationCriteria": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "max_score": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "BASE, ALTERNATIVE",
+                    "type": "string"
+                }
+            }
+        },
         "entity.ExpertEvaluation": {
             "type": "object",
             "properties": {
@@ -1068,6 +1660,10 @@ const docTemplate = `{
                 "source_info": {
                     "type": "string"
                 },
+                "status": {
+                    "description": "DRAFT, COMPLETED",
+                    "type": "string"
+                },
                 "updated_at": {
                     "type": "string"
                 },
@@ -1082,13 +1678,16 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "first_name": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
+                },
                 "slot_number": {
                     "type": "integer"
                 },
                 "user_id": {
-                    "type": "string"
-                },
-                "user_name": {
                     "type": "string"
                 }
             }
@@ -1122,10 +1721,13 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "first_name": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
-                "name": {
+                "last_name": {
                     "type": "string"
                 },
                 "role": {
@@ -1133,32 +1735,22 @@ const docTemplate = `{
                 }
             }
         },
-        "v1.assignSlotRequest": {
+        "handlers.assignSlotRequest": {
             "type": "object",
-            "required": [
-                "slot_number",
-                "user_id",
-                "user_role"
-            ],
             "properties": {
+                "role": {
+                    "type": "string"
+                },
                 "slot_number": {
                     "type": "integer"
                 },
                 "user_id": {
                     "type": "string"
-                },
-                "user_role": {
-                    "type": "string"
                 }
             }
         },
-        "v1.createApplicantRequest": {
+        "handlers.createApplicantRequest": {
             "type": "object",
-            "required": [
-                "first_name",
-                "last_name",
-                "program_id"
-            ],
             "properties": {
                 "first_name": {
                     "type": "string"
@@ -1174,27 +1766,20 @@ const docTemplate = `{
                 }
             }
         },
-        "v1.expertEvaluationRequest": {
+        "handlers.expertEvaluationRequest": {
             "type": "object",
-            "required": [
-                "category",
-                "score",
-                "user_id",
-                "user_name",
-                "user_role"
-            ],
             "properties": {
-                "category": {
-                    "type": "string"
-                },
-                "comment": {
-                    "type": "string"
+                "complete": {
+                    "type": "boolean"
                 },
                 "expert_id": {
                     "type": "string"
                 },
-                "score": {
-                    "type": "integer"
+                "scores": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entity.ExpertEvaluation"
+                    }
                 },
                 "user_id": {
                     "type": "string"
@@ -1207,17 +1792,25 @@ const docTemplate = `{
                 }
             }
         }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Введите токен в формате: Bearer {token}",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
     }
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "",
-	Host:             "",
+	Version:          "1.0",
+	Host:             "localhost:8080",
 	BasePath:         "",
 	Schemes:          []string{},
-	Title:            "",
-	Description:      "",
+	Title:            "Manage Service API",
+	Description:      "API for managing applicants and documents",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

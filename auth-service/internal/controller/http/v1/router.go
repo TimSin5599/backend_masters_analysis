@@ -28,8 +28,8 @@ func NewRouter(handler *gin.Engine, t usecase.Auth, u usecase.User, jwtSecret st
 	}
 
 	handler.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{allowOrigin, "http://localhost:8081"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowOriginFunc:  isLocalNetworkOrigin,
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
