@@ -55,3 +55,6 @@ venv/
 
 # Graph knowledge base
 graphify-out/
+
+# Service configurations
+*/config/*.yml
