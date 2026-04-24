@@ -7,6 +7,9 @@ RUN go mod download
 
 COPY . .
 
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+RUN swag init -g cmd/app/main.go
+
 RUN go build -o main cmd/app/main.go
 
 FROM alpine:latest
