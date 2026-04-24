@@ -53,7 +53,7 @@ func main() {
 
 	select {
 	case s := <-interrupt:
-		l.Info("app - Run - signal: " + s.String())
+		l.Info("app - Run - signal: %v", s.String())
 	case err = <-httpServer.Notify():
 		l.Error("app - Run - httpServer.Notify: %v", err)
 	}
