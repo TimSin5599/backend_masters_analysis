@@ -42,7 +42,7 @@ func main() {
 	v1.NewRouter(handler, statsUC)
 
 	httpServer := httpserver.New(handler, cfg.HTTP.Port)
-	l.Info("app - Run - Server started on port: " + cfg.HTTP.Port)
+	l.Info("app - Run - Server started on port: %s", cfg.HTTP.Port)
 
 	select {
 	case err = <-httpServer.Notify():

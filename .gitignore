@@ -46,6 +46,7 @@ data-extraction-service/debug_images/
 
 # Python
 __pycache__/
+data-extraction-service/__pycache__/
 *.py[cod]
 *.pyo
 .venv/
