@@ -2,6 +2,9 @@ package main
 
 import (
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"statistics-service/config"
 	v1 "statistics-service/internal/controller/http/v1"
@@ -44,8 +47,20 @@ func main() {
 	httpServer := httpserver.New(handler, cfg.HTTP.Port)
 	l.Info("app - Run - Server started on port: %s", cfg.HTTP.Port)
 
+	// Waiting signal
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
+
 	select {
+	case s := <-interrupt:
+		l.Info("app - Run - signal: " + s.String())
 	case err = <-httpServer.Notify():
 		l.Error("app - Run - httpServer.Notify: %v", err)
+	}
+
+	// Shutdown
+	err = httpServer.Shutdown()
+	if err != nil {
+		l.Error("app - Run - httpServer.Shutdown: %v", err)
 	}
 }
