@@ -75,9 +75,9 @@ func (r *authHandler) Login(c *gin.Context) {
 		refreshCookieName,
 		refreshToken,
 		int(7*24*time.Hour/time.Second), // MaxAge в секундах
-		"/v1/refresh",                   // Path — cookie доступна только на этом пути
+		"/api/auth/v1/",                 // Path совпадает с nginx-префиксом
 		"",                              // Domain (пусто = текущий хост)
-		false,                           // Secure (true в production с HTTPS)
+		true,                            // Secure — только HTTPS
 		true,                            // HttpOnly
 	)
 
@@ -101,7 +101,7 @@ func (r *authHandler) Refresh(c *gin.Context) {
 	newAccessToken, newRefreshToken, err := r.uc.RefreshTokens(c.Request.Context(), refreshToken)
 	if err != nil {
 		// Сбрасываем cookie при невалидном токене
-		c.SetCookie(refreshCookieName, "", -1, "/v1/refresh", "", false, true)
+		c.SetCookie(refreshCookieName, "", -1, "/api/auth/v1/", "", true, true)
 		switch err {
 		case domain.ErrInvalidToken:
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired refresh token"})
@@ -118,9 +118,9 @@ func (r *authHandler) Refresh(c *gin.Context) {
 		refreshCookieName,
 		newRefreshToken,
 		int(7*24*time.Hour/time.Second),
-		"/v1/refresh",
+		"/api/auth/v1/",
 		"",
-		false,
+		true,
 		true,
 	)
 
@@ -141,7 +141,7 @@ func (r *authHandler) Logout(c *gin.Context) {
 	}
 
 	// Очищаем cookie
-	c.SetCookie(refreshCookieName, "", -1, "/v1/refresh", "", false, true)
+	c.SetCookie(refreshCookieName, "", -1, "/api/auth/v1/", "", true, true)
 	c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
 }
 
