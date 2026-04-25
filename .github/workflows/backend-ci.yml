@@ -1,0 +1,91 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.4' # Укажите вашу точную версию Go
+
+      # Линтер для Go
+      - name: Run GolangCI-Lint (Auth)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: auth-service
+
+      - name: Run GolangCI-Lint (Manage)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: manage-service
+
+      - name: Run GolangCI-Lint (Statistics)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: statistics-service
+
+      # Тесты для Go
+      - name: Run Go Tests
+        run: |
+          cd auth-service && go test -v ./...
+          cd ../manage-service && go test -v ./...
+          cd ../statistics-service && go test -v ./...
+
+      # Линтер для Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Run Python Flake8
+        run: |
+          cd data-extraction-service
+          pip install flake8
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  deploy:
+    needs: test-and-lint
+    if: github.ref == 'refs/heads/main' # Деплоим только при пуше в main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          MANAGE_CONF: ${{ secrets.CONFIG_MANAGE_SERVICE }}
+          AUTH_CONF: ${{ secrets.CONFIG_AUTH_SERVICE }}
+          STATS_CONF: ${{ secrets.CONFIG_STATS_SERVICE }}
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: MANAGE_CONF,AUTH_CONF,STATS_CONF
+          script: |
+            # 1. Переходим в папку с бэкендом (замените путь на ВАШ реальный на сервере)
+            cd /opt/FQW/backend
+            
+            # 2. Обновляем код бэкенда
+            git pull origin main
+            
+            # 3. Восстанавливаем конфигурации
+            mkdir -p manage-service/config auth-service/config statistics-service/config
+            echo "$MANAGE_CONF" > manage-service/config/config.yml
+            echo "$AUTH_CONF" > auth-service/config/config.yml
+            echo "$STATS_CONF" > statistics-service/config/config.yml
+            
+            # 4. Возвращаемся в корень и запускаем сборку
+            # (так как ваш docker-compose.yml лежит на уровень выше)
+            cd ..
+            docker-compose up -d --build

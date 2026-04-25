@@ -58,3 +58,6 @@ graphify-out/
 
 # Service configurations
 */config/*.yml
+
+# Deploy secrets (keep .env.example, ignore .env)
+deploy/.env
