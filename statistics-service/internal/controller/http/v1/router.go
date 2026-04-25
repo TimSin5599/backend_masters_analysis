@@ -16,9 +16,19 @@ type Handler struct {
 	uc *usecase.StatsUseCase
 }
 
-func NewRouter(handler *gin.Engine, uc *usecase.StatsUseCase) {
+func NewRouter(handler *gin.Engine, uc *usecase.StatsUseCase, corsOrigin string) {
+	allowOrigin := corsOrigin
+	if allowOrigin == "" {
+		allowOrigin = "http://localhost:3000"
+	}
+
 	handler.Use(cors.New(cors.Config{
-		AllowOriginFunc:  isLocalNetworkOrigin,
+		AllowOriginFunc: func(origin string) bool {
+			if origin == allowOrigin {
+				return true
+			}
+			return isLocalNetworkOrigin(origin)
+		},
 		AllowMethods:     []string{"GET", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},

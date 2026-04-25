@@ -13,6 +13,11 @@ type (
 		HTTP `yaml:"http"`
 		Log  `yaml:"logger"`
 		PG   `yaml:"postgres"`
+		CORS `yaml:"cors"`
+	}
+
+	CORS struct {
+		AllowOrigin string `yaml:"allow_origin" env:"CORS_ALLOW_ORIGIN"`
 	}
 
 	App struct {

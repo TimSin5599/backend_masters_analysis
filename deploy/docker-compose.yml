@@ -90,6 +90,7 @@ services:
       - PG_POOL_MAX=10
       - PG_URL=postgres://${PG_USER}:${PG_PASSWORD}@db:5432/${PG_DB}?sslmode=disable
       - JWT_SIGN_KEY=${JWT_SIGN_KEY}
+      - CORS_ALLOW_ORIGIN=https://masters-admission.ru
     depends_on:
       - db
     networks:

@@ -42,7 +42,7 @@ func main() {
 	statsUC := usecase.New(statsRepo)
 
 	handler := gin.New()
-	v1.NewRouter(handler, statsUC)
+	v1.NewRouter(handler, statsUC, cfg.CORS.AllowOrigin)
 
 	httpServer := httpserver.New(handler, cfg.HTTP.Port)
 	l.Info("app - Run - Server started on port: %s", cfg.HTTP.Port)

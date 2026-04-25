@@ -35,7 +35,12 @@ func NewRouter(
 	}
 
 	handler.Use(cors.New(cors.Config{
-		AllowOriginFunc:  isLocalNetworkOrigin,
+		AllowOriginFunc: func(origin string) bool {
+			if origin == allowOrigin {
+				return true
+			}
+			return isLocalNetworkOrigin(origin)
+		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length", "Content-Type", "Content-Disposition"},
