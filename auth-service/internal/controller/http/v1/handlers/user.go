@@ -22,27 +22,27 @@ type userResponse struct {
 	LastName   string    `json:"lastName"`
 	Phone      string    `json:"phone"`
 	AvatarPath string    `json:"avatarPath"`
-	Role       string    `json:"role"`
+	Roles      []string  `json:"roles"`
 	LastOnline time.Time `json:"lastOnline"`
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 type createUserRequest struct {
-    Email     string `json:"email"     binding:"required,email"`
-    Password  string `json:"password"  binding:"required"`
-    FirstName string `json:"firstName"`
-    LastName  string `json:"lastName"`
-    Phone     string `json:"phone"`
-    Role      string `json:"role"      binding:"required"`
+	Email     string   `json:"email"    binding:"required,email"`
+	Password  string   `json:"password" binding:"required"`
+	FirstName string   `json:"firstName"`
+	LastName  string   `json:"lastName"`
+	Phone     string   `json:"phone"`
+	Roles     []string `json:"roles"    binding:"required"`
 }
 
 type updateUserRequest struct {
-    FirstName  string `json:"firstName"`
-    LastName   string `json:"lastName"`
-    Phone      string `json:"phone"`
-    AvatarPath string `json:"avatarPath"`
-    Role       string `json:"role"`
+	FirstName  string   `json:"firstName"`
+	LastName   string   `json:"lastName"`
+	Phone      string   `json:"phone"`
+	AvatarPath string   `json:"avatarPath"`
+	Roles      []string `json:"roles"`
 }
 
 func NewUserHandler(uc usecase.User) *userHandler {
@@ -107,13 +107,13 @@ func (r *userHandler) CreateUser(c *gin.Context) {
     }
 
 	user := entity.User{
-        Email:     req.Email,
-        Password:  req.Password,
-        FirstName: req.FirstName,
-        LastName:  req.LastName,
-        Phone:     req.Phone,
-        Role:      req.Role,
-    }
+		Email:     req.Email,
+		Password:  req.Password,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		Phone:     req.Phone,
+		Roles:     req.Roles,
+	}
 
 	id, err := r.uc.CreateUser(c.Request.Context(), user)
 	if err != nil {
@@ -162,7 +162,7 @@ func (r *userHandler) UpdateUser(c *gin.Context) {
 		LastName:   req.LastName,
 		Phone:      req.Phone,
 		AvatarPath: req.AvatarPath,
-		Role:       req.Role,
+		Roles:      req.Roles,
 	}
 
 	if err := r.uc.UpdateUser(c.Request.Context(), user); err != nil {
@@ -193,16 +193,16 @@ func (r *userHandler) DeleteUser(c *gin.Context) {
 
 
 func toUserResponse(u entity.User) userResponse {
-    return userResponse{
-        ID:         u.ID,
-        Email:      u.Email,
-        FirstName:  u.FirstName,
-        LastName:   u.LastName,
-        Phone:      u.Phone,
-        AvatarPath: u.AvatarPath,
-        Role:       u.Role,
-        LastOnline: u.LastOnline,
-        CreatedAt:  u.CreatedAt,
-        UpdatedAt:  u.UpdatedAt,
-    }
+	return userResponse{
+		ID:         u.ID,
+		Email:      u.Email,
+		FirstName:  u.FirstName,
+		LastName:   u.LastName,
+		Phone:      u.Phone,
+		AvatarPath: u.AvatarPath,
+		Roles:      u.Roles,
+		LastOnline: u.LastOnline,
+		CreatedAt:  u.CreatedAt,
+		UpdatedAt:  u.UpdatedAt,
+	}
 }

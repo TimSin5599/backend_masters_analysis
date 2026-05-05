@@ -11,7 +11,7 @@ type User struct {
 	LastName   string    `json:"lastName"`
 	Phone      string    `json:"phone"`
 	AvatarPath string    `json:"avatarPath"`
-	Role       string    `json:"role"`
+	Roles      []string  `json:"roles"`
 	LastOnline time.Time `json:"last_online"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`

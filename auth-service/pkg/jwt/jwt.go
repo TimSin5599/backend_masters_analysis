@@ -13,14 +13,14 @@ const (
 )
 
 // GenerateAccessToken генерирует JWT access токен.
-func GenerateAccessToken(userID, email, role, secretKey string) (string, error) {
+func GenerateAccessToken(userID, email string, roles []string, secretKey string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": userID,
 		"exp": time.Now().Add(AccessTokenTTL).Unix(),
 		"iat": time.Now().Unix(),
 		"user": map[string]interface{}{
 			"email": email,
-			"role":  role,
+			"roles": roles,
 		},
 	})
 	tokenString, err := token.SignedString([]byte(secretKey))

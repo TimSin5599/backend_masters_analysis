@@ -160,17 +160,8 @@ func (m *Middleware) AdminMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		userClaim, ok := claims["user"].(map[string]interface{})
-		if !ok {
-			fmt.Printf("[ADMIN_MIDDLEWARE] ❌ Данные пользователя не найдены в токене\n")
-			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: incomplete token data"})
-			c.Abort()
-			return
-		}
-
-		role, ok := userClaim["role"].(string)
-		if !ok || role != entity.RoleAdmin {
-			fmt.Printf("[ADMIN_MIDDLEWARE] ❌ Отказ в доступе. Требуется admin, текущая роль: %v\n", role)
+		if !rolesFromClaimsHas(claims, entity.RoleAdmin) {
+			fmt.Printf("[ADMIN_MIDDLEWARE] ❌ Отказ в доступе: роль admin отсутствует\n")
 			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: Requires admin role"})
 			c.Abort()
 			return
@@ -179,4 +170,31 @@ func (m *Middleware) AdminMiddleware() gin.HandlerFunc {
 		fmt.Printf("[ADMIN_MIDDLEWARE] ✅ Права администратора подтверждены\n")
 		c.Next()
 	}
+}
+
+// rolesFromClaimsHas проверяет наличие нужной роли в JWT claims["user"]["roles"].
+func rolesFromClaimsHas(claims jwt.MapClaims, role string) bool {
+	userClaim, ok := claims["user"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	raw, ok := userClaim["roles"]
+	if !ok {
+		return false
+	}
+	switch v := raw.(type) {
+	case []interface{}:
+		for _, r := range v {
+			if s, ok := r.(string); ok && s == role {
+				return true
+			}
+		}
+	case []string:
+		for _, r := range v {
+			if r == role {
+				return true
+			}
+		}
+	}
+	return false
 }

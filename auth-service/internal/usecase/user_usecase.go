@@ -27,7 +27,7 @@ func NewUser(r UserRepo, tokenRepo TokenRepo) *UserUseCase {
 
 // CreateUser создаёт пользователя администратором.
 func (uc *UserUseCase) CreateUser(ctx context.Context, user entity.User) (string, error) {
-	if !entity.IsValidRole(user.Role) {
+	if !entity.IsValidRoles(user.Roles) {
 		return "", domain.ErrInvalidRole
 	}
 

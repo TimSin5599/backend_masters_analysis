@@ -93,7 +93,7 @@ func (r *UserRepo) Update(ctx context.Context, user entity.User) error {
 			u.LastName = user.LastName
 			u.Phone = user.Phone
 			u.AvatarPath = user.AvatarPath
-			u.Role = user.Role
+			u.Roles = user.Roles
 			u.UpdatedAt = time.Now()
 			r.users[email] = u
 			return nil

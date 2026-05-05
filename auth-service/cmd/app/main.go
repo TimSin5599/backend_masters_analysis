@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"auth-service/config"
+	authDocs "auth-service/docs"
 	v1 "auth-service/internal/controller/http/v1"
 	pgrepo "auth-service/internal/repository/postgres"
 	redisrepo "auth-service/internal/repository/redis"
@@ -26,16 +27,21 @@ import (
 // @host            localhost:8081
 // @BasePath        /
 
-// @securityDefinitions.apikey BearerAuth
-// @in header
-// @name Authorization
-// @description Введи токен в формате: Bearer {token}
 func main() {
 	// Configuration
 	cfg, err := config.NewConfig()
 	if err != nil {
 		log.Fatalf("Config error: %s", err)
 	}
+
+	// Swagger
+	swaggerHost := cfg.Swagger.Host
+	if swaggerHost == "" {
+		swaggerHost = "localhost:" + cfg.HTTP.Port
+	}
+	authDocs.SwaggerInfo.Title = cfg.App.Name
+	authDocs.SwaggerInfo.Version = cfg.App.Version
+	authDocs.SwaggerInfo.Host = swaggerHost
 
 	// Logger
 	l := logger.New(cfg.Log.Level)

@@ -24,12 +24,11 @@ var _ usecase.UserRepo = (*PostgresRepo)(nil)
 
 func (r *PostgresRepo) Store(ctx context.Context, user entity.User) error {
 	fmt.Printf("[REPOSITORY] Store - Сохранение пользователя в БД\n")
-	fmt.Printf("[REPOSITORY] ID: %s | Email: %s | Role: %s\n", user.ID, user.Email, user.Role)
+	fmt.Printf("[REPOSITORY] ID: %s | Email: %s | Roles: %v\n", user.ID, user.Email, user.Roles)
 
-	query := `INSERT INTO users (id, email, password, role, first_name, last_name, phone, avatar_path, last_online, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
-	fmt.Printf("[REPOSITORY] SQL Query: %s\n", query)
+	query := `INSERT INTO users (id, email, password, roles, first_name, last_name, phone, avatar_path, last_online, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 
-	_, err := r.Pool.Exec(ctx, query, user.ID, user.Email, user.Password, user.Role, user.FirstName, user.LastName, user.Phone, user.AvatarPath, user.LastOnline, user.CreatedAt, user.UpdatedAt)
+	_, err := r.Pool.Exec(ctx, query, user.ID, user.Email, user.Password, user.Roles, user.FirstName, user.LastName, user.Phone, user.AvatarPath, user.LastOnline, user.CreatedAt, user.UpdatedAt)
 	if err != nil {
 		fmt.Printf("[REPOSITORY] ❌ Ошибка выполнения SQL запроса: %v\n", err)
 		return fmt.Errorf("PostgresRepo - Store - r.Pool.Exec: %w", err)
@@ -42,15 +41,14 @@ func (r *PostgresRepo) Store(ctx context.Context, user entity.User) error {
 func (r *PostgresRepo) GetByEmail(ctx context.Context, email string) (entity.User, error) {
 	fmt.Printf("[REPOSITORY] GetByEmail - Поиск пользователя по email: %s\n", email)
 
-	query := `SELECT id, email, password, role, COALESCE(first_name, ''), COALESCE(last_name, ''), COALESCE(phone, ''), COALESCE(avatar_path, ''), COALESCE(last_online, '1970-01-01 00:00:00'), created_at, updated_at FROM users WHERE email = $1`
-	fmt.Printf("[REPOSITORY] SQL Query: %s\n", query)
+	query := `SELECT id, email, password, roles, COALESCE(first_name, ''), COALESCE(last_name, ''), COALESCE(phone, ''), COALESCE(avatar_path, ''), COALESCE(last_online, '1970-01-01 00:00:00'), created_at, updated_at FROM users WHERE email = $1`
 
 	var user entity.User
 	err := r.Pool.QueryRow(ctx, query, email).Scan(
 		&user.ID,
 		&user.Email,
 		&user.Password,
-		&user.Role,
+		&user.Roles,
 		&user.FirstName,
 		&user.LastName,
 		&user.Phone,
@@ -69,22 +67,21 @@ func (r *PostgresRepo) GetByEmail(ctx context.Context, email string) (entity.Use
 		return entity.User{}, fmt.Errorf("PostgresRepo - GetByEmail - r.Pool.QueryRow.Scan: %w", err)
 	}
 
-	fmt.Printf("[REPOSITORY] ✅ Пользователь найден | ID: %s | Role: %s\n", user.ID, user.Role)
+	fmt.Printf("[REPOSITORY] ✅ Пользователь найден | ID: %s | Roles: %v\n", user.ID, user.Roles)
 	return user, nil
 }
 
 func (r *PostgresRepo) GetByID(ctx context.Context, id string) (entity.User, error) {
 	fmt.Printf("[REPOSITORY] GetByID - Поиск пользователя по ID: %s\n", id)
 
-	query := `SELECT id, email, password, role, COALESCE(first_name, ''), COALESCE(last_name, ''), COALESCE(phone, ''), COALESCE(avatar_path, ''), COALESCE(last_online, '1970-01-01 00:00:00'), created_at, updated_at FROM users WHERE id = $1`
-	fmt.Printf("[REPOSITORY] SQL Query: %s\n", query)
+	query := `SELECT id, email, password, roles, COALESCE(first_name, ''), COALESCE(last_name, ''), COALESCE(phone, ''), COALESCE(avatar_path, ''), COALESCE(last_online, '1970-01-01 00:00:00'), created_at, updated_at FROM users WHERE id = $1`
 
 	var user entity.User
 	err := r.Pool.QueryRow(ctx, query, id).Scan(
 		&user.ID,
 		&user.Email,
 		&user.Password,
-		&user.Role,
+		&user.Roles,
 		&user.FirstName,
 		&user.LastName,
 		&user.Phone,
@@ -103,12 +100,12 @@ func (r *PostgresRepo) GetByID(ctx context.Context, id string) (entity.User, err
 		return entity.User{}, fmt.Errorf("PostgresRepo - GetByID - r.Pool.QueryRow.Scan: %w", err)
 	}
 
-	fmt.Printf("[REPOSITORY] ✅ Пользователь найден | Email: %s | Role: %s\n", user.Email, user.Role)
+	fmt.Printf("[REPOSITORY] ✅ Пользователь найден | Email: %s | Roles: %v\n", user.Email, user.Roles)
 	return user, nil
 }
 
 func (r *PostgresRepo) List(ctx context.Context) ([]entity.User, error) {
-	query := `SELECT id, email, role, COALESCE(first_name, ''), COALESCE(last_name, ''), COALESCE(phone, ''), COALESCE(avatar_path, ''), COALESCE(last_online, '1970-01-01 00:00:00'), created_at, updated_at FROM users`
+	query := `SELECT id, email, roles, COALESCE(first_name, ''), COALESCE(last_name, ''), COALESCE(phone, ''), COALESCE(avatar_path, ''), COALESCE(last_online, '1970-01-01 00:00:00'), created_at, updated_at FROM users`
 	rows, err := r.Pool.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("PostgresRepo - List - r.Pool.Query: %w", err)
@@ -121,7 +118,7 @@ func (r *PostgresRepo) List(ctx context.Context) ([]entity.User, error) {
 		err = rows.Scan(
 			&user.ID,
 			&user.Email,
-			&user.Role,
+			&user.Roles,
 			&user.FirstName,
 			&user.LastName,
 			&user.Phone,
@@ -140,8 +137,8 @@ func (r *PostgresRepo) List(ctx context.Context) ([]entity.User, error) {
 }
 
 func (r *PostgresRepo) Update(ctx context.Context, user entity.User) error {
-	query := `UPDATE users SET first_name = $1, last_name = $2, phone = $3, avatar_path = $4, role = $5, updated_at = NOW() WHERE id = $6`
-	_, err := r.Pool.Exec(ctx, query, user.FirstName, user.LastName, user.Phone, user.AvatarPath, user.Role, user.ID)
+	query := `UPDATE users SET first_name = $1, last_name = $2, phone = $3, avatar_path = $4, roles = $5, updated_at = NOW() WHERE id = $6`
+	_, err := r.Pool.Exec(ctx, query, user.FirstName, user.LastName, user.Phone, user.AvatarPath, user.Roles, user.ID)
 	if err != nil {
 		return fmt.Errorf("PostgresRepo - Update - r.Pool.Exec: %w", err)
 	}

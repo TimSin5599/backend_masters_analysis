@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"auth-service/internal/usecase"
@@ -26,11 +27,14 @@ func NewRouter(handler *gin.Engine, t usecase.Auth, u usecase.User, jwtSecret st
 	if allowOrigin == "" {
 		allowOrigin = "http://localhost:3000"
 	}
+	allowedOrigins := strings.Split(allowOrigin, ",")
 
 	handler.Use(cors.New(cors.Config{
 		AllowOriginFunc: func(origin string) bool {
-			if origin == allowOrigin {
-				return true
+			for _, o := range allowedOrigins {
+				if origin == strings.TrimSpace(o) {
+					return true
+				}
 			}
 			return isLocalNetworkOrigin(origin)
 		},

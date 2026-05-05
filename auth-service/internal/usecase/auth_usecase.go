@@ -49,7 +49,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, email, password, role strin
 		ID:         uuid.New().String(),
 		Email:      email,
 		Password:   string(hashedPassword),
-		Role:       role,
+		Roles:      []string{role},
 		LastOnline: time.Now(),
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
@@ -73,7 +73,7 @@ func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (strin
 		return "", "", domain.ErrInvalidCredentials
 	}
 
-	accessToken, err := jwt.GenerateAccessToken(user.ID, user.Email, user.Role, uc.signKey)
+	accessToken, err := jwt.GenerateAccessToken(user.ID, user.Email, user.Roles, uc.signKey)
 	if err != nil {
 		return "", "", domain.ErrInvalidToken
 	}
@@ -107,7 +107,7 @@ func (uc *AuthUseCase) RefreshTokens(ctx context.Context, refreshToken string) (
 		return "", "", domain.ErrUserNotFound
 	}
 
-	newAccessToken, err := jwt.GenerateAccessToken(user.ID, user.Email, user.Role, uc.signKey)
+	newAccessToken, err := jwt.GenerateAccessToken(user.ID, user.Email, user.Roles, uc.signKey)
 	if err != nil {
 		return "", "", domain.ErrInvalidToken
 	}
