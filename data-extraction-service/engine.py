@@ -1,4 +1,4 @@
-from prompts import classification_prompt, extraction_prompts
+from prompts import classification_prompt, extraction_prompts, system_prompt
 import ollama
 import fitz  # PyMuPDF
 import base64
@@ -86,9 +86,6 @@ class ExtractionEngine:
     def process_with_ai(self,images_b64: list[str], category: str) -> dict:
         """Sends context Photos to Ollama (Qwen3-VL) for structured data extraction."""
         prompts = extraction_prompts
-        
-        with open('./prompts/system.txt', 'r', encoding='utf-8') as f:
-            system_prompt = f.read()
         
         # For diploma: always run both diploma and transcript extractions and merge results.
         # Transcript fields will be empty if no grades table is present — that's fine.
@@ -264,7 +261,6 @@ class ExtractionEngine:
 
     def _extract_single(self, images_b64: list[str], category: str) -> dict:
         """Runs a single-category extraction (no composite logic). Used internally by process_with_ai."""
-        system_prompt = system_prompt
         
         prompts = {
             "diploma": (
@@ -431,6 +427,38 @@ class ExtractionEngine:
 
         return sanitized
 
+    def _get_criterion_guidance(self, code: str) -> str:
+        """Returns specific evaluation rubric for known criterion types."""
+        code_upper = code.upper()
+
+        if 'MOTIVATION' in code_upper or 'MOT' in code_upper:
+            return (
+                "Evaluate the motivation letter against ALL of the following criteria:\n"
+                "1. Does the applicant explicitly name the target educational PROGRAM?\n"
+                "2. Does the applicant explicitly name the target UNIVERSITY?\n"
+                "3. Is the letter well-written and grammatically coherent (no obvious errors, clear structure)?\n"
+                "4. Does the applicant state a clear GOAL — why this specific program is necessary for them?\n"
+                "5. Are specific courses, disciplines, or faculty members mentioned?\n"
+                "6. Does the applicant explain why they consider themselves the BEST candidate "
+                "(unique skills, experience, achievements)?\n"
+                "A letter that fully addresses all six points deserves the maximum score. "
+                "Each missing point proportionally lowers the score. "
+                "A generic letter that mentions none of these deserves 0."
+            )
+
+        if 'RECOMMEND' in code_upper or 'REC' in code_upper:
+            return (
+                "Evaluate the recommendation letter(s) against these criteria:\n"
+                "1. Does the author provide SPECIFIC, CONCRETE examples of the applicant's qualities, "
+                "achievements, or situations? (Generic phrases like 'excellent student' or 'highly recommend' "
+                "without evidence do NOT qualify.)\n"
+                "2. Are the stated reasons for recommending the applicant personalised and detailed?\n"
+                "Score high only when the letter contains concrete facts, named situations, or measurable results. "
+                "Score low when the letter is vague, formulaic, or indistinguishable from a template."
+            )
+
+        return ""
+
     def score_portfolio(self, criteria: list[dict], applicant_data: dict) -> list[dict]:
         """
         Оценивает категории портфолио абитуриента по заданным критериям.
@@ -457,11 +485,13 @@ class ExtractionEngine:
 
             # Формируем текстовое резюме данных абитуриента для этого критерия
             relevant_data = self._build_data_summary(crit, applicant_data)
+            guidance = self._get_criterion_guidance(code)
+            guidance_block = f"\n\nEvaluation rubric:\n{guidance}" if guidance else ""
 
             prompt = f"""You are an academic admissions committee member scoring an applicant's portfolio.
 
 Criterion: {title}
-Maximum score: {max_score}
+Maximum score: {max_score}{guidance_block}
 
 Applicant data relevant to this criterion:
 {relevant_data}
@@ -505,13 +535,25 @@ Do not add any other text, explanation, or markdown."""
             if 'transcript' in applicant_data:
                 parts.append(f"Transcript/GPA: {applicant_data['transcript']}")
             if 'second_diploma' in applicant_data:
-                parts.append(f"Additional education: {applicant_data['second_diploma']}")
+                parts.append(f"Additional diplomas: {applicant_data['second_diploma']}")
+            # EDU_ADD covers professional development and certifications too
+            if 'ADD' in code:
+                if 'prof_development' in applicant_data:
+                    parts.append(f"Professional development / training: {applicant_data['prof_development']}")
+                if 'certification' in applicant_data:
+                    parts.append(f"Certifications: {applicant_data['certification']}")
 
         if 'ACHIEVE' in code or 'IEEE' in code or 'ADD_ACHIEV' in code:
             if 'achievement' in applicant_data:
                 parts.append(f"Achievements: {applicant_data['achievement']}")
             if 'second_diploma' in applicant_data:
                 parts.append(f"Additional education: {applicant_data['second_diploma']}")
+            # ADD_ACHIEV_COMBINED also covers professional development and certifications
+            if 'ADD_ACHIEV' in code:
+                if 'prof_development' in applicant_data:
+                    parts.append(f"Professional development / training: {applicant_data['prof_development']}")
+                if 'certification' in applicant_data:
+                    parts.append(f"Certifications: {applicant_data['certification']}")
 
         if 'MOTIVATION' in code or 'MOT' in code:
             if 'motivation' in applicant_data:
@@ -528,6 +570,8 @@ Do not add any other text, explanation, or markdown."""
         if 'WORK' in code or 'PROF' in code:
             if 'work' in applicant_data:
                 parts.append(f"Work experience: {applicant_data['work']}")
+            if 'prof_development' in applicant_data:
+                parts.append(f"Professional development: {applicant_data['prof_development']}")
 
         # Если специфического маппинга нет — отдаём всё
         if not parts:
@@ -541,3 +585,84 @@ Do not add any other text, explanation, or markdown."""
         summary = "\n".join(parts)
         # Ограничиваем длину чтобы не переполнить контекст
         return summary[:3000]
+
+    def generate_annotation(self, applicant_data: dict) -> str:
+        """
+        Генерирует краткую текстовую аннотацию на абитуриента на основе всех извлечённых данных.
+        """
+        sections = []
+
+        personal = applicant_data.get("personal_data")
+        if personal:
+            sections.append(f"Персональные данные: {personal}")
+
+        # Go sends "diploma" (not "education")
+        education = applicant_data.get("diploma")
+        if education:
+            sections.append(f"Базовое образование: {education}")
+
+        transcript = applicant_data.get("transcript")
+        if transcript:
+            sections.append(f"Академическая успеваемость: {transcript}")
+
+        # Go sends "prof_development", "second_diploma", "certification" separately
+        additional_parts = []
+        for key in ("prof_development", "second_diploma", "certification"):
+            val = applicant_data.get(key)
+            if val:
+                additional_parts.append(val)
+        if additional_parts:
+            sections.append(f"Дополнительное образование и опыт работы: {'; '.join(additional_parts)}")
+
+        achievement = applicant_data.get("achievement")
+        if achievement:
+            sections.append(f"Достижения: {achievement}")
+
+        motivation = applicant_data.get("motivation")
+        if motivation:
+            sections.append(f"Мотивационное письмо: {motivation}")
+
+        recommendation = applicant_data.get("recommendation")
+        if recommendation:
+            sections.append(f"Рекомендации: {recommendation}")
+
+        language = applicant_data.get("language")
+        if language:
+            sections.append(f"Языковой сертификат: {language}")
+
+        data_summary = "\n\n".join(sections) if sections else "Данные отсутствуют."
+        data_summary = data_summary[:6000]
+
+        # /no_think disables Qwen3 extended thinking mode so tokens are spent on the annotation itself
+        prompt = f"""/no_think
+Ты — аналитик приёмной комиссии магистратуры. Составь краткую профессиональную аннотацию на абитуриента на русском языке (3–5 абзацев).
+
+Данные абитуриента:
+{data_summary}
+
+Требования к аннотации:
+- Структурируй по разделам: персональные данные, образование, опыт/компетенции, мотивация, выводы.
+- Используй деловой стиль, без лишних оборотов.
+- Если каких-то данных нет, просто пропусти этот раздел.
+- Отвечай ТОЛЬКО текстом аннотации, без заголовков, без JSON, без пояснений.
+
+Аннотация:"""
+
+        try:
+            response = self.client.chat(
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                options={"temperature": 0.4, "num_predict": 2048, "num_ctx": 8192}
+            )
+            resp_dict = response.model_dump() if hasattr(response, 'model_dump') else dict(response)
+            content = resp_dict.get("message", {}).get("content", "")
+            # Strip closed <think>...</think> blocks
+            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+            # Strip unclosed <think> block if present (truncated thinking)
+            last_think = content.rfind('<think>')
+            if last_think != -1 and '</think>' not in content[last_think:]:
+                content = content[:last_think]
+            return content.strip()
+        except Exception as e:
+            logger.error(f"[ANNOTATION] Error generating annotation: {e}")
+            return f"Ошибка генерации аннотации: {e}"

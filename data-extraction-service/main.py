@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import List, Optional
 from engine import ExtractionEngine
+from config import APP_TITLE, APP_DESCRIPTION, APP_VERSION, HTTP_PORT
 import os
 import shutil
 import uvicorn
@@ -11,9 +12,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Data Extraction Service",
-    description="Service for extracting structured data from documents (PDFs, images) using Vision AI models.",
-    version="1.0.0",
+    title=APP_TITLE,
+    description=APP_DESCRIPTION,
+    version=APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -135,5 +136,23 @@ async def score_portfolio(req: ScoreRequest):
         return {"scores": [], "error": str(e)}
 
 
+class AnnotationRequest(BaseModel):
+    applicant_data: dict
+
+
+@app.post(
+    "/v1/annotate",
+    summary="Generate Applicant Annotation",
+    description="Generate a narrative annotation for an applicant based on all extracted data using AI."
+)
+async def generate_annotation(req: AnnotationRequest):
+    try:
+        annotation = engine.generate_annotation(req.applicant_data)
+        return {"annotation": annotation}
+    except Exception as e:
+        logger.error(f"Error in generate_annotation: {e}")
+        return {"annotation": "", "error": str(e)}
+
+
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=HTTP_PORT, reload=True)

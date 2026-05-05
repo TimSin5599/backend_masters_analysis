@@ -5,7 +5,8 @@ system_prompt = (
     3. Do not include any explanations, text, or markdown—only the raw JSON (no code fences).
     4. If a value is missing, use null or an empty string "". If you are not sure and must guess, prefix the value with '~'.
     5. Ensure the JSON is valid (keys in double quotes, etc.).
-    6. DO NOT use <think> tags or output reasoning steps. Output the JSON block IMMEDIATELY."""
+    6. DO NOT use <think> tags or output reasoning steps. Output the JSON block IMMEDIATELY.
+    7. Translate ALL extracted text values to Russian. Exceptions (keep as-is): dates (YYYY-MM-DD), numeric values, codes and IDs (document numbers, serial numbers), email addresses, phone numbers, proper names of people, standardized exam names (IELTS, TOEFL, Cambridge, etc.)."""
 )
 
 extraction_prompts = {
@@ -40,8 +41,12 @@ extraction_prompts = {
     ),
     "motivation": (
         "Analyze this motivation letter. Extract as JSON with one key: 'main_text'. "
-        "main_text should contain the core content of the letter — the key thoughts, achievements, reasons for applying — "
-        "stripped of any generic/filler/introductory phrases. Keep it concise but informative. Write in the same language as the original."
+        "main_text: core content of the letter — key thoughts, achievements, reasons for applying. "
+        "Pay special attention to whether the applicant explicitly stated WHY they chose the "
+        "'System and Software Engineering' program specifically (обоснование выбора программы). "
+        "If such reasoning is present, include it prominently in main_text. "
+        "If it is absent, note it briefly at the end: '[Обоснование выбора программы СПИ не указано]'. "
+        "Strip generic/filler phrases. Keep it concise but informative. Write in Russian."
     ),
     "recommendation": (
         "Analyze recommendation letter for JSON: author_name (who wrote the letter), "
@@ -51,7 +56,7 @@ extraction_prompts = {
     "resume": (
         "Extract specific data from CV/Resume. Return a JSON object with strictly these keys: "
         "'personal_data': {'email': string, 'phone': string}, "
-        "'experiences': list of objects with {'company_name': string, 'position': string, 'start_date': YYYY-MM-DD, 'end_date': YYYY-MM-DD or null, 'record_type': 'work' or 'internship' or 'training'}, "
+        "'experiences': list of objects with {'company_name': string, 'position': string, 'start_date': YYYY-MM-DD, 'end_date': YYYY-MM-DD or null, 'record_type': 'work' or 'internship' or 'training', 'competencies': string (key skills and responsibilities at this position as a comma-separated string; empty string if not determinable)}, "
         "'achievements': list of objects with {'achievement_type': string, 'achievement_title': string, 'company_name': string, 'date_received': YYYY-MM-DD}. "
         "CRITICAL: Be extremely consistent with company names and job titles. Do not include 'LLC', 'Inc', or extra descriptors unless they are part of the core brand. "
         "For 'phone', if multiple numbers are found, separate them with a comma and space (e.g., '+123, +456'). "
@@ -70,12 +75,14 @@ extraction_prompts = {
     ),
     "work": (
         "Extract career/work history. Return a JSON with one key 'experiences' which is a list of objects. "
-        "Each object must contain: company_name, position, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD or empty if current job). "
+        "Each object must contain: company_name, position, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD or empty if current job), "
+        "competencies (key skills and responsibilities at this position as a comma-separated string, e.g. 'Python, REST API, team management'; empty string if not determinable). "
         "Extract ALL jobs/positions mentioned in the document."
     ),
     "prof_development": (
         "Extract career/work history or training details. Return a JSON with one key 'experiences' which is a list of objects. "
-        "Each object must contain: company_name, position, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD or empty if current job). "
+        "Each object must contain: company_name, position, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD or empty if current job), "
+        "competencies (key skills, technologies, or topics covered at this position/training — comma-separated string; empty string if not determinable). "
         "Extract ALL jobs, internships or training programs mentioned in the document."
     ),
     "second_diploma": (
