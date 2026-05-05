@@ -290,23 +290,16 @@ func (uc *DocumentUseCase) ProcessAIResult(ctx context.Context, applicantID int6
 		dob := parseTimeSafe(rawData["date_of_birth"])
 		docIDRef := &documentID
 
-		// Preserve existing name/surname — do not overwrite operator-entered values
+		// ФИО вводится менеджером при создании абитуриента — ИИ не должен их перезаписывать.
+		// Только оператор/администратор может менять ФИО через ручное редактирование.
 		existing, _ := uc.appRepo.GetLatestIdentification(ctx, applicantID)
-		name := rawData["name"]
-		if name == "" {
-			name = existing.Name
-		}
-		surname := rawData["surname"]
-		if surname == "" {
-			surname = existing.Surname
-		}
 
 		data := entity.IdentificationData{
 			ApplicantID:    applicantID,
 			DocumentID:     docIDRef,
-			Name:           name,
-			Surname:        surname,
-			Patronymic:     rawData["patronymic"],
+			Name:           existing.Name,
+			Surname:        existing.Surname,
+			Patronymic:     existing.Patronymic,
 			Email:          rawData["email"],
 			Phone:          rawData["phone"],
 			DocumentNumber: rawData["document_number"],
@@ -445,6 +438,7 @@ func (uc *DocumentUseCase) ProcessAIResult(ctx context.Context, applicantID int6
 				position, _ := exp["position"].(string)
 				startDateStr, _ := exp["start_date"].(string)
 				endDateStr, _ := exp["end_date"].(string)
+				competencies, _ := exp["competencies"].(string)
 
 				startDate := parseTimeSafe(startDateStr)
 				endDate := parseTimeSafe(endDateStr)
@@ -454,14 +448,15 @@ func (uc *DocumentUseCase) ProcessAIResult(ctx context.Context, applicantID int6
 				}
 
 				wExp := entity.WorkExperience{
-					ApplicantID: applicantID,
-					DocumentID:  docIDRef,
-					CompanyName: companyName,
-					Position:    position,
-					StartDate:   startDate,
-					EndDate:     endDatePtr,
-					RecordType:  recordType,
-					Source:      "model",
+					ApplicantID:  applicantID,
+					DocumentID:   docIDRef,
+					CompanyName:  companyName,
+					Position:     position,
+					StartDate:    startDate,
+					EndDate:      endDatePtr,
+					RecordType:   recordType,
+					Competencies: competencies,
+					Source:       "model",
 				}
 				if err := uc.appRepo.StoreWorkExperience(ctx, wExp); err != nil {
 					return err
@@ -555,6 +550,7 @@ func (uc *DocumentUseCase) ProcessAIResult(ctx context.Context, applicantID int6
 				startDateStr, _ := exp["start_date"].(string)
 				endDateStr, _ := exp["end_date"].(string)
 				recordType, _ := exp["record_type"].(string)
+				competencies, _ := exp["competencies"].(string)
 				if recordType == "" {
 					recordType = "work"
 				}
@@ -582,14 +578,15 @@ func (uc *DocumentUseCase) ProcessAIResult(ctx context.Context, applicantID int6
 
 				if !isDuplicate {
 					wExp := entity.WorkExperience{
-						ApplicantID: applicantID,
-						DocumentID:  docIDRef,
-						CompanyName: companyName,
-						Position:    position,
-						StartDate:   startDate,
-						EndDate:     endDate,
-						RecordType:  recordType,
-						Source:      "model",
+						ApplicantID:  applicantID,
+						DocumentID:   docIDRef,
+						CompanyName:  companyName,
+						Position:     position,
+						StartDate:    startDate,
+						EndDate:      endDate,
+						RecordType:   recordType,
+						Competencies: competencies,
+						Source:       "model",
 					}
 					if err := uc.appRepo.StoreWorkExperience(ctx, wExp); err != nil {
 						fmt.Printf("[USECASE] ❌ Error storing experience: %v\n", err)

@@ -259,6 +259,7 @@ func (uc *ExpertUseCase) TriggerAIScoring(ctx context.Context, applicantID int64
 			Status:          entity.EvaluationStatusDraft,
 			UpdatedByID:     "AI_SYSTEM",
 			IsAdminOverride: false,
+			IsAIGenerated:   true,
 			SourceInfo:      "AI Portfolio Scorer",
 		})
 	}
@@ -366,6 +367,12 @@ func (uc *ExpertUseCase) collectApplicantData(ctx context.Context, applicantID i
 	}
 	if eduList, err := uc.appRepo.ListEducation(ctx, applicantID); err == nil {
 		data["second_diploma"] = eduList
+	}
+	if profDev, err := uc.appRepo.ListWorkExperience(ctx, applicantID, "prof_development"); err == nil {
+		data["prof_development"] = profDev
+	}
+	if certs, err := uc.appRepo.ListAchievements(ctx, applicantID, "certification"); err == nil {
+		data["certification"] = certs
 	}
 
 	// Сериализуем в map[string]interface{} через JSON для единого формата

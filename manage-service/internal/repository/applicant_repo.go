@@ -114,8 +114,8 @@ func (r *ApplicantRepo) StoreEducation(ctx context.Context, data entity.Educatio
 }
 
 func (r *ApplicantRepo) StoreWorkExperience(ctx context.Context, data entity.WorkExperience) error {
-	query := `INSERT INTO applicants_data_work_experience (applicant_id, document_id, company_name, position, start_date, end_date, country, city, record_type, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
-	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.CompanyName, data.Position, data.StartDate, data.EndDate, data.Country, data.City, data.RecordType, data.Source)
+	query := `INSERT INTO applicants_data_work_experience (applicant_id, document_id, company_name, position, start_date, end_date, country, city, record_type, competencies, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+	_, err := r.pool.Exec(ctx, query, data.ApplicantID, data.DocumentID, data.CompanyName, data.Position, data.StartDate, data.EndDate, data.Country, data.City, data.RecordType, data.Competencies, data.Source)
 	return err
 }
 
@@ -187,7 +187,7 @@ func (r *ApplicantRepo) ListEducation(ctx context.Context, applicantID int64) ([
 }
 
 func (r *ApplicantRepo) ListWorkExperience(ctx context.Context, applicantID int64, fileType string) ([]entity.WorkExperience, error) {
-	query := `SELECT id, applicant_id, document_id, COALESCE(country, ''), COALESCE(city, ''), COALESCE(company_name, ''), COALESCE(position, ''), COALESCE(start_date, '1970-01-01'), end_date, COALESCE(record_type, ''), COALESCE(source, '') FROM applicants_data_work_experience WHERE applicant_id=$1`
+	query := `SELECT id, applicant_id, document_id, COALESCE(country, ''), COALESCE(city, ''), COALESCE(company_name, ''), COALESCE(position, ''), COALESCE(start_date, '1970-01-01'), end_date, COALESCE(record_type, ''), COALESCE(competencies, ''), COALESCE(source, '') FROM applicants_data_work_experience WHERE applicant_id=$1`
 
 	args := []interface{}{applicantID}
 	if fileType != "" {
@@ -210,7 +210,7 @@ func (r *ApplicantRepo) ListWorkExperience(ctx context.Context, applicantID int6
 	list := make([]entity.WorkExperience, 0)
 	for rows.Next() {
 		var d entity.WorkExperience
-		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.Country, &d.City, &d.CompanyName, &d.Position, &d.StartDate, &d.EndDate, &d.RecordType, &d.Source)
+		err = rows.Scan(&d.ID, &d.ApplicantID, &d.DocumentID, &d.Country, &d.City, &d.CompanyName, &d.Position, &d.StartDate, &d.EndDate, &d.RecordType, &d.Competencies, &d.Source)
 		if err != nil {
 			return nil, err
 		}
@@ -440,11 +440,11 @@ func (r *ApplicantRepo) UpdateTranscript(ctx context.Context, data entity.Transc
 func (r *ApplicantRepo) UpdateWorkExperience(ctx context.Context, data entity.WorkExperience) error {
 	query := `UPDATE applicants_data_work_experience SET
 		company_name=$1, position=$2, start_date=$3, end_date=$4,
-		country=$5, city=$6, record_type=$7, source=$8
-		WHERE id=$9`
+		country=$5, city=$6, record_type=$7, competencies=$8, source=$9
+		WHERE id=$10`
 	_, err := r.pool.Exec(ctx, query,
 		data.CompanyName, data.Position, data.StartDate, data.EndDate,
-		data.Country, data.City, data.RecordType, data.Source, data.ID,
+		data.Country, data.City, data.RecordType, data.Competencies, data.Source, data.ID,
 	)
 	return err
 }

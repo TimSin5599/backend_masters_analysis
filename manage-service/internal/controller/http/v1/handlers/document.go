@@ -272,11 +272,10 @@ func (h *DocumentHandler) UploadDocument(c *gin.Context) {
 	}
 
 	category := c.PostForm("category")
-	docType := c.PostForm("doc_type")
 	if category == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "category of the document is required"})
-		return
+		category = "unknown"
 	}
+	docType := c.PostForm("doc_type")
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})

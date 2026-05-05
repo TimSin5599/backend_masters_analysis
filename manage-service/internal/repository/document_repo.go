@@ -33,6 +33,12 @@ func (r *DocumentRepo) UpdateDocumentStatus(ctx context.Context, id int64, statu
 	return err
 }
 
+func (r *DocumentRepo) MarkProcessingStarted(ctx context.Context, id int64) error {
+	query := `UPDATE applicants_document SET processing_started_at = NOW() WHERE id = $1`
+	_, err := r.pool.Exec(ctx, query, id)
+	return err
+}
+
 func (r *DocumentRepo) UpdateDocumentCategory(ctx context.Context, id int64, category string) error {
 	query := `UPDATE applicants_document SET file_type=$1 WHERE id=$2`
 	_, err := r.pool.Exec(ctx, query, category, id)

@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -12,8 +13,8 @@ import (
 
 	_ "manage-service/docs"
 	"manage-service/internal/controller/http/v1/handlers"
+	"manage-service/internal/sse"
 	"manage-service/internal/usecase"
-	ws "manage-service/internal/websocket"
 )
 
 func NewRouter(
@@ -22,9 +23,10 @@ func NewRouter(
 	docUC usecase.Document,
 	expertUC usecase.Expert,
 	programUC usecase.Program,
-	hub *ws.Hub,
+	hub *sse.Hub,
 	jwtSecret string,
 	corsOrigin string,
+	extractor usecase.ExtractionClient,
 ) {
 	// Options
 	handler.Use(gin.Recovery())
@@ -33,11 +35,14 @@ func NewRouter(
 	if allowOrigin == "" {
 		allowOrigin = "http://localhost:3000"
 	}
+	allowedOrigins := strings.Split(allowOrigin, ",")
 
 	handler.Use(cors.New(cors.Config{
 		AllowOriginFunc: func(origin string) bool {
-			if origin == allowOrigin {
-				return true
+			for _, o := range allowedOrigins {
+				if origin == strings.TrimSpace(o) {
+					return true
+				}
 			}
 			return isLocalNetworkOrigin(origin)
 		},
@@ -50,10 +55,11 @@ func NewRouter(
 
 	handler.Use(LoggingMiddleware())
 
-	appHandler := handlers.NewApplicantHandler(appUC, hub)
+	appHandler := handlers.NewApplicantHandler(appUC)
 	docHandler := handlers.NewDocumentHandler(docUC)
 	expertHandler := handlers.NewExpertHandler(expertUC)
 	progHandler := handlers.NewProgramHandler(programUC)
+	annotHandler := handlers.NewAnnotationHandler(appUC, extractor)
 
 	v1 := handler.Group("/v1")
 	v1.Use(JWTMiddleware(jwtSecret))
@@ -78,9 +84,10 @@ func NewRouter(
 		v1.POST("/applicants/:id/documents/reprocess", docHandler.ReprocessLatestDocument)
 		v1.GET("/applicants/:id/queue-status", docHandler.GetQueueStatus)
 
-		v1.GET("/applicants/:id/ws", appHandler.WebsocketHandler)
+		v1.GET("/applicants/:id/status/stream", hub.HandleSSE)
 		v1.POST("/applicants/:id/transfer-to-operator", appHandler.TransferToOperator)
 		v1.POST("/applicants/:id/transfer-to-experts", appHandler.TransferToExperts)
+		v1.GET("/applicants/:id/annotation/stream", annotHandler.StreamAnnotation)
 
 		v1.GET("/applicants/:id/evaluations", expertHandler.ListExpertEvaluations)
 		v1.PUT("/applicants/:id/evaluations", expertHandler.SaveExpertEvaluation)

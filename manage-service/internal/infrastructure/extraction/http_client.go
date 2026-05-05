@@ -25,8 +25,13 @@ func New(baseURL string) *HTTPClient {
 }
 
 func (c *HTTPClient) TriggerExtraction(ctx context.Context, doc entity.Document, content []byte) (map[string]string, error) {
-	// 5-minute timeout for data extraction
-	extractCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	// diploma runs two sequential Ollama calls (diploma + transcript), each up to 5 min,
+	// so give it up to 11 min; all other categories get 5 min.
+	extractTimeout := 5 * time.Minute
+	if doc.FileType == "diploma" {
+		extractTimeout = 11 * time.Minute
+	}
+	extractCtx, cancel := context.WithTimeout(ctx, extractTimeout)
 	defer cancel()
 	
 	fmt.Printf("[EXTRACTION] Triggering for doc %d (%s) | Size: %d bytes\n", doc.ID, doc.FileName, len(content))
@@ -93,6 +98,41 @@ func (c *HTTPClient) TriggerExtraction(ctx context.Context, doc entity.Document,
 
 	fmt.Printf("[EXTRACTION] ✅ Success! Extracted %d fields\n", len(result))
 	return result, nil
+}
+
+func (c *HTTPClient) GenerateAnnotation(ctx context.Context, applicantData map[string]interface{}) (string, error) {
+	annotCtx, cancel := context.WithTimeout(ctx, 8*time.Minute)
+	defer cancel()
+
+	payload := map[string]interface{}{"applicant_data": applicantData}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal annotation request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(annotCtx, "POST", c.baseURL+"/v1/annotate", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("failed to create annotation request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("annotation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Annotation string `json:"annotation"`
+		Error      string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode annotation response: %w", err)
+	}
+	if result.Error != "" {
+		return "", fmt.Errorf("annotation service error: %s", result.Error)
+	}
+	return result.Annotation, nil
 }
 
 func (c *HTTPClient) ClassifyDocument(ctx context.Context, fileName string, content []byte) (string, []string, error) {

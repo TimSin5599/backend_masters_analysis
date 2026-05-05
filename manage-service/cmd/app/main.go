@@ -3,25 +3,25 @@ package main
 import (
 	"context"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"manage-service/config"
-	"manage-service/pkg/httpserver"
-	"manage-service/pkg/logger"
-	"manage-service/pkg/postgres"
-
+	manageDocs "manage-service/docs"
 	v1 "manage-service/internal/controller/http/v1"
 	"manage-service/internal/infrastructure/extraction"
 	"manage-service/internal/infrastructure/s3"
 	"manage-service/internal/rabbitmq"
 	"manage-service/internal/repository"
+	"manage-service/internal/sse"
 	"manage-service/internal/usecase"
-	ws "manage-service/internal/websocket"
+	"manage-service/pkg/httpserver"
+	"manage-service/pkg/logger"
+	"manage-service/pkg/postgres"
 
 	"github.com/gin-gonic/gin"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 // @title           Manage Service API
@@ -39,6 +39,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Config error: %s", err)
 	}
+
+	// Swagger
+	swaggerHost := cfg.Swagger.Host
+	if swaggerHost == "" {
+		swaggerHost = "localhost:" + cfg.HTTP.Port
+	}
+	manageDocs.SwaggerInfo.Title = cfg.App.Name
+	manageDocs.SwaggerInfo.Version = cfg.App.Version
+	manageDocs.SwaggerInfo.Host = swaggerHost
 
 	// Logger
 	l := logger.New(cfg.Log.Level)
@@ -87,8 +96,8 @@ func main() {
 	// Подключаем AI-оценивание к applicantUC (разрыв циклической зависимости через интерфейс)
 	appUC.SetAIScoringTrigger(expertUC)
 
-	// 4. WebSocket Hub
-	hub := ws.NewHub()
+	// 4. SSE Hub
+	hub := sse.NewHub()
 
 	// Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -126,7 +135,7 @@ func main() {
 	})
 
 	// Router
-	v1.NewRouter(handler, appUC, docUC, expertUC, progUC, hub, cfg.JWT.SignKey, cfg.CORS.AllowOrigin)
+	v1.NewRouter(handler, appUC, docUC, expertUC, progUC, hub, cfg.JWT.SignKey, cfg.CORS.AllowOrigin, extractionClient)
 
 	httpServer := httpserver.New(handler, cfg.HTTP.Port)
 	l.Info("app - Run - Server started on port: %s", cfg.HTTP.Port)

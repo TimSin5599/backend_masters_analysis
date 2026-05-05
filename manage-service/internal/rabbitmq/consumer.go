@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"manage-service/internal/domain/entity"
+	"manage-service/internal/sse"
 	"manage-service/internal/usecase"
-	ws "manage-service/internal/websocket"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -25,10 +25,10 @@ type Consumer struct {
 	docRepo    usecase.DocumentRepo
 	s3         usecase.S3Provider
 	extractor  usecase.ExtractionClient
-	hub        *ws.Hub
+	hub        *sse.Hub
 }
 
-func NewConsumer(url string, repo usecase.ApplicantRepo, queueRepo usecase.DocumentQueueRepo, appUseCase usecase.Applicant, docUseCase usecase.Document, docRepo usecase.DocumentRepo, s3 usecase.S3Provider, extractor usecase.ExtractionClient, hub *ws.Hub) (*Consumer, error) {
+func NewConsumer(url string, repo usecase.ApplicantRepo, queueRepo usecase.DocumentQueueRepo, appUseCase usecase.Applicant, docUseCase usecase.Document, docRepo usecase.DocumentRepo, s3 usecase.S3Provider, extractor usecase.ExtractionClient, hub *sse.Hub) (*Consumer, error) {
 	conn, err := amqp.Dial(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
@@ -213,8 +213,8 @@ func (c *Consumer) processMessage(d amqp.Delivery) {
 
 	log.Printf(" [->] Processing Document %s (Priority: %d, Category: %s)", task.ID, task.Priority, task.DocumentCategory)
 
-	// Hard outer deadline: longer than classification (2m) + extraction (5m) combined
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+	// Hard outer deadline: classification (2m) + extraction (up to 11m for diploma) + buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
 	_ = c.queueRepo.UpdateStatus(ctx, task.ID, "processing", nil)
@@ -293,6 +293,14 @@ func (c *Consumer) processMessage(d amqp.Delivery) {
 			docType = "training"
 		case "certificate":
 			sysCategory = "certification"
+		case "diploma":
+			// If applicant already has a diploma, route to second_diploma
+			for _, doc := range docs {
+				if doc.FileType == "diploma" && doc.ID != targetDoc.ID {
+					sysCategory = "second_diploma"
+					break
+				}
+			}
 		}
 
 		targetDoc.FileType = sysCategory
@@ -331,6 +339,7 @@ func (c *Consumer) processMessage(d amqp.Delivery) {
 	}
 
 	// ── Extraction stage ──────────────────────────────────────────────────────
+	_ = c.docRepo.MarkProcessingStarted(ctx, targetDoc.ID)
 	_ = c.docRepo.UpdateDocumentStatus(ctx, targetDoc.ID, entity.DocStatusExtracting)
 	c.hub.BroadcastStatus(task.ApplicantID, map[string]interface{}{
 		"task_id":  task.ID,

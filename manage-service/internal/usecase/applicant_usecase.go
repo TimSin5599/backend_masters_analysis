@@ -127,7 +127,7 @@ func (uc *ApplicantUseCase) UpdateApplicantData(ctx context.Context, applicantID
 	}
 	fName := getString(rawData, "first_name")
 	lName := getString(rawData, "last_name")
-	pName := getString(rawData, "patronymic")
+	pName := getString(rawData, "user_patronymic")
 
 	fullName := strings.TrimSpace(fmt.Sprintf("%s %s %s", lName, fName, pName))
 	if fullName != "" {

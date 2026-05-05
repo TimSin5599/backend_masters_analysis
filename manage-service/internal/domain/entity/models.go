@@ -78,17 +78,18 @@ type TranscriptData struct {
 }
 
 type WorkExperience struct {
-	ID          int64      `json:"id"`
-	ApplicantID int64      `json:"applicant_id"`
-	DocumentID  *int64     `json:"document_id,omitempty"`
-	Country     string     `json:"country"`
-	City        string     `json:"city"`
-	Position    string     `json:"position"`
-	CompanyName string     `json:"company_name"`
-	StartDate   time.Time  `json:"start_date"`
-	EndDate     *time.Time `json:"end_date,omitempty"`
-	RecordType  string     `json:"record_type,omitempty"`
-	Source      string     `json:"source"`
+	ID           int64      `json:"id"`
+	ApplicantID  int64      `json:"applicant_id"`
+	DocumentID   *int64     `json:"document_id,omitempty"`
+	Country      string     `json:"country"`
+	City         string     `json:"city"`
+	Position     string     `json:"position"`
+	CompanyName  string     `json:"company_name"`
+	StartDate    time.Time  `json:"start_date"`
+	EndDate      *time.Time `json:"end_date,omitempty"`
+	RecordType   string     `json:"record_type,omitempty"`
+	Competencies string     `json:"competencies,omitempty"`
+	Source       string     `json:"source"`
 }
 
 type LanguageTraining struct {
@@ -209,6 +210,7 @@ type ExpertEvaluation struct {
 	Status          string    `json:"status"` // DRAFT, COMPLETED
 	UpdatedByID     string    `json:"updated_by_id"`
 	IsAdminOverride bool      `json:"is_admin_override"`
+	IsAIGenerated   bool      `json:"is_ai_generated"`
 	SourceInfo      string    `json:"source_info"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
@@ -247,11 +249,11 @@ type ScoringResult struct {
 }
 
 type User struct {
-	ID        string `json:"id"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Email     string `json:"email"`
-	Role      string `json:"role"`
+	ID        string   `json:"id"`
+	FirstName string   `json:"first_name"`
+	LastName  string   `json:"last_name"`
+	Email     string   `json:"email"`
+	Roles     []string `json:"roles"`
 }
 
 type StagingResult struct {

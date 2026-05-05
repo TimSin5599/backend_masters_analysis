@@ -63,6 +63,7 @@ type (
 		StoreDocument(context.Context, *entity.Document) error
 		UpdateDocumentStatus(ctx context.Context, id int64, status string) error
 		UpdateDocumentStatusByPath(ctx context.Context, storagePath string, status string) error
+		MarkProcessingStarted(ctx context.Context, id int64) error
 		GetDocuments(context.Context, int64) ([]entity.Document, error)
 		GetDocumentByID(context.Context, int64) (entity.Document, error)
 		DeleteDocument(context.Context, int64) error
@@ -125,6 +126,7 @@ type (
 	ExtractionClient interface {
 		TriggerExtraction(context.Context, entity.Document, []byte) (map[string]string, error)
 		ClassifyDocument(ctx context.Context, fileName string, content []byte) (string, []string, error)
+		GenerateAnnotation(ctx context.Context, applicantData map[string]interface{}) (string, error)
 	}
 
 	Applicant interface {

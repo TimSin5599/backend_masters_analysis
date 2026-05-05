@@ -6,16 +6,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"manage-service/internal/usecase"
-	ws "manage-service/internal/websocket"
 )
 
 type ApplicantHandler struct {
-	uc  usecase.Applicant
-	hub *ws.Hub
+	uc usecase.Applicant
 }
 
-func NewApplicantHandler(uc usecase.Applicant, hub *ws.Hub) *ApplicantHandler {
-	return &ApplicantHandler{uc: uc, hub: hub}
+func NewApplicantHandler(uc usecase.Applicant) *ApplicantHandler {
+	return &ApplicantHandler{uc: uc}
 }
 // @Summary     Удаление абитуриента
 // @Description Удаляет абитуриента и все связанные с ним данные по ID.
@@ -199,25 +197,6 @@ func (h *ApplicantHandler) UpdateApplicantData(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "data updated successfully"})
-}
-
-// @Summary     WebSocket соединение
-// @Description Устанавливает WebSocket-соединение для получения обновлений статуса обработки документов абитуриента в реальном времени.
-// @Tags        applicants
-// @Security    BearerAuth
-// @Param       id  path  int  true  "ID абитуриента"
-// @Success     101  {string}  string  "Switching Protocols"
-// @Failure     400  {object}  map[string]string
-// @Router      /v1/applicants/{id}/ws [get]
-func (h *ApplicantHandler) WebsocketHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	applicantID, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid applicant id"})
-		return
-	}
-
-	h.hub.HandleWebSocket(c, applicantID)
 }
 
 // @Summary     Передача абитуриента оператору

@@ -109,41 +109,55 @@ func JWTMiddleware(secretKey string) gin.HandlerFunc {
 	}
 }
 
-// roleFromClaims извлекает роль из JWT claims.
-// Auth-service кладёт роль в claims["user"]["role"].
-func roleFromClaims(c *gin.Context) (string, bool) {
+// rolesFromClaims извлекает массив ролей из JWT claims["user"]["roles"].
+func rolesFromClaims(c *gin.Context) ([]string, bool) {
 	raw, exists := c.Get("claims")
 	if !exists {
-		return "", false
+		return nil, false
 	}
 	mapClaims, ok := raw.(jwt.MapClaims)
 	if !ok {
-		return "", false
+		return nil, false
 	}
-	// Основной путь: claims["user"]["role"]
-	if userMap, ok := mapClaims["user"].(map[string]interface{}); ok {
-		if role, ok := userMap["role"].(string); ok && role != "" {
-			return role, true
+	userMap, ok := mapClaims["user"].(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+	switch v := userMap["roles"].(type) {
+	case []interface{}:
+		roles := make([]string, 0, len(v))
+		for _, r := range v {
+			if s, ok := r.(string); ok {
+				roles = append(roles, s)
+			}
+		}
+		return roles, len(roles) > 0
+	case []string:
+		return v, len(v) > 0
+	}
+	return nil, false
+}
+
+func hasRole(roles []string, role string) bool {
+	for _, r := range roles {
+		if r == role {
+			return true
 		}
 	}
-	// Запасной путь: claims["role"] (на случай другого формата токена)
-	if role, ok := mapClaims["role"].(string); ok && role != "" {
-		return role, true
-	}
-	return "", false
+	return false
 }
 
 // AdminMiddleware разрешает доступ только пользователям с ролью admin.
 // Должен применяться после JWTMiddleware.
 func AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, ok := roleFromClaims(c)
+		roles, ok := rolesFromClaims(c)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			c.Abort()
 			return
 		}
-		if role != "admin" {
+		if !hasRole(roles, "admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
 			c.Abort()
 			return
@@ -155,13 +169,13 @@ func AdminMiddleware() gin.HandlerFunc {
 // AdminOrManagerMiddleware разрешает доступ пользователям с ролью admin или manager.
 func AdminOrManagerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, ok := roleFromClaims(c)
+		roles, ok := rolesFromClaims(c)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			c.Abort()
 			return
 		}
-		if role != "admin" && role != "manager" {
+		if !hasRole(roles, "admin") && !hasRole(roles, "manager") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "admin or manager access required"})
 			c.Abort()
 			return

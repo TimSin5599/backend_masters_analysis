@@ -17,22 +17,22 @@ func NewExpertRepo(pool *pgxpool.Pool) *ExpertRepo {
 }
 
 func (r *ExpertRepo) StoreEvaluation(ctx context.Context, eval entity.ExpertEvaluation) error {
-	query := `INSERT INTO expert_evaluations 
-		(applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, source_info) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	query := `INSERT INTO expert_evaluations
+		(applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, is_ai_generated, source_info)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 	_, err := r.pool.Exec(ctx, query,
 		eval.ApplicantID, eval.ExpertID, eval.Category, eval.Score, eval.Comment, eval.Status,
-		eval.UpdatedByID, eval.IsAdminOverride, eval.SourceInfo,
+		eval.UpdatedByID, eval.IsAdminOverride, eval.IsAIGenerated, eval.SourceInfo,
 	)
 	return err
 }
 
 func (r *ExpertRepo) UpdateEvaluation(ctx context.Context, eval entity.ExpertEvaluation) error {
-	query := `UPDATE expert_evaluations SET 
-		score=$1, comment=$2, status=$3, updated_by_id=$4, is_admin_override=$5, source_info=$6, updated_at=NOW() 
-		WHERE applicant_id=$7 AND expert_id=$8 AND category=$9`
+	query := `UPDATE expert_evaluations SET
+		score=$1, comment=$2, status=$3, updated_by_id=$4, is_admin_override=$5, is_ai_generated=$6, source_info=$7, updated_at=NOW()
+		WHERE applicant_id=$8 AND expert_id=$9 AND category=$10`
 	_, err := r.pool.Exec(ctx, query,
-		eval.Score, eval.Comment, eval.Status, eval.UpdatedByID, eval.IsAdminOverride, eval.SourceInfo,
+		eval.Score, eval.Comment, eval.Status, eval.UpdatedByID, eval.IsAdminOverride, eval.IsAIGenerated, eval.SourceInfo,
 		eval.ApplicantID, eval.ExpertID, eval.Category,
 	)
 	return err
@@ -45,7 +45,7 @@ func (r *ExpertRepo) UpdateEvaluationStatus(ctx context.Context, applicantID int
 }
 
 func (r *ExpertRepo) ListEvaluations(ctx context.Context, applicantID int64) ([]entity.ExpertEvaluation, error) {
-	query := `SELECT id, applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, source_info, created_at, updated_at 
+	query := `SELECT id, applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, is_ai_generated, source_info, created_at, updated_at
 		FROM expert_evaluations WHERE applicant_id=$1`
 	rows, err := r.pool.Query(ctx, query, applicantID)
 	if err != nil {
@@ -56,7 +56,7 @@ func (r *ExpertRepo) ListEvaluations(ctx context.Context, applicantID int64) ([]
 	evals := make([]entity.ExpertEvaluation, 0)
 	for rows.Next() {
 		var e entity.ExpertEvaluation
-		err := rows.Scan(&e.ID, &e.ApplicantID, &e.ExpertID, &e.Category, &e.Score, &e.Comment, &e.Status, &e.UpdatedByID, &e.IsAdminOverride, &e.SourceInfo, &e.CreatedAt, &e.UpdatedAt)
+		err := rows.Scan(&e.ID, &e.ApplicantID, &e.ExpertID, &e.Category, &e.Score, &e.Comment, &e.Status, &e.UpdatedByID, &e.IsAdminOverride, &e.IsAIGenerated, &e.SourceInfo, &e.CreatedAt, &e.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -66,11 +66,11 @@ func (r *ExpertRepo) ListEvaluations(ctx context.Context, applicantID int64) ([]
 }
 
 func (r *ExpertRepo) GetEvaluation(ctx context.Context, applicantID int64, expertID string, category string) (entity.ExpertEvaluation, error) {
-	query := `SELECT id, applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, source_info, created_at, updated_at 
+	query := `SELECT id, applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, is_ai_generated, source_info, created_at, updated_at
 		FROM expert_evaluations WHERE applicant_id = $1 AND expert_id = $2 AND category = $3`
 	var e entity.ExpertEvaluation
 	err := r.pool.QueryRow(ctx, query, applicantID, expertID, category).Scan(
-		&e.ID, &e.ApplicantID, &e.ExpertID, &e.Category, &e.Score, &e.Comment, &e.Status, &e.UpdatedByID, &e.IsAdminOverride, &e.SourceInfo, &e.CreatedAt, &e.UpdatedAt,
+		&e.ID, &e.ApplicantID, &e.ExpertID, &e.Category, &e.Score, &e.Comment, &e.Status, &e.UpdatedByID, &e.IsAdminOverride, &e.IsAIGenerated, &e.SourceInfo, &e.CreatedAt, &e.UpdatedAt,
 	)
 	return e, err
 }
@@ -123,17 +123,17 @@ func (r *ExpertRepo) SaveEvaluationBatch(ctx context.Context, evaluations []enti
 	defer tx.Rollback(ctx)
 
 	for _, eval := range evaluations {
-		query := `INSERT INTO expert_evaluations 
-			(applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, source_info) 
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		query := `INSERT INTO expert_evaluations
+			(applicant_id, expert_id, category, score, comment, status, updated_by_id, is_admin_override, is_ai_generated, source_info)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			ON CONFLICT (applicant_id, expert_id, category) DO UPDATE SET
-			score=EXCLUDED.score, comment=EXCLUDED.comment, status=EXCLUDED.status, 
-			updated_by_id=EXCLUDED.updated_by_id, is_admin_override=EXCLUDED.is_admin_override, 
-			source_info=EXCLUDED.source_info, updated_at=NOW()`
+			score=EXCLUDED.score, comment=EXCLUDED.comment, status=EXCLUDED.status,
+			updated_by_id=EXCLUDED.updated_by_id, is_admin_override=EXCLUDED.is_admin_override,
+			is_ai_generated=EXCLUDED.is_ai_generated, source_info=EXCLUDED.source_info, updated_at=NOW()`
 
 		_, err := tx.Exec(ctx, query,
 			eval.ApplicantID, eval.ExpertID, eval.Category, eval.Score, eval.Comment, eval.Status,
-			eval.UpdatedByID, eval.IsAdminOverride, eval.SourceInfo,
+			eval.UpdatedByID, eval.IsAdminOverride, eval.IsAIGenerated, eval.SourceInfo,
 		)
 		if err != nil {
 			return err
@@ -157,7 +157,7 @@ func (r *ExpertRepo) GetAggregatedScore(ctx context.Context, applicantID int64, 
 				MAX(CASE WHEN category = 'ENGLISH' AND score = 0 THEN 1 ELSE 0 END) as is_english_zero
 			FROM expert_evaluations
 			WHERE applicant_id = $1 AND status = 'COMPLETED' AND category = ANY($2)
-			  AND expert_id::text != 'AI_SYSTEM'
+			  AND expert_id != 'AI_SYSTEM'
 			GROUP BY expert_id
 		)
 		SELECT COALESCE(AVG(CASE WHEN is_english_zero = 1 THEN 0 ELSE total_score END), 0)
@@ -238,7 +238,7 @@ func (r *ExpertRepo) GetExpertSlotByUserID(ctx context.Context, userID string, p
 }
 
 func (r *ExpertRepo) GetUsersByRoles(ctx context.Context, roles []string) ([]entity.User, error) {
-	query := `SELECT id, first_name, last_name, email, role FROM users WHERE role = ANY($1) ORDER BY first_name ASC`
+	query := `SELECT id, first_name, last_name, email, roles FROM users WHERE roles && $1::text[] ORDER BY first_name ASC`
 	rows, err := r.pool.Query(ctx, query, roles)
 	if err != nil {
 		return nil, err
@@ -248,7 +248,7 @@ func (r *ExpertRepo) GetUsersByRoles(ctx context.Context, roles []string) ([]ent
 	var users []entity.User
 	for rows.Next() {
 		var u entity.User
-		err := rows.Scan(&u.ID, &u.FirstName, &u.LastName, &u.Email, &u.Role)
+		err := rows.Scan(&u.ID, &u.FirstName, &u.LastName, &u.Email, &u.Roles)
 		if err != nil {
 			return nil, err
 		}

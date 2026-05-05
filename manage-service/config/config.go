@@ -18,6 +18,7 @@ type (
 		RabbitMQ   `yaml:"rabbitmq"`
 		JWT        `yaml:"jwt"`
 		CORS       `yaml:"cors"`
+		Swagger    `yaml:"swagger"`
 	}
 
 	App struct {
@@ -59,6 +60,10 @@ type (
 
 	CORS struct {
 		AllowOrigin string `yaml:"allow_origin" env:"CORS_ALLOW_ORIGIN"`
+	}
+
+	Swagger struct {
+		Host string `yaml:"host" env:"SWAGGER_HOST"`
 	}
 )
 
