@@ -9,15 +9,20 @@ import (
 
 type (
 	Config struct {
-		App  `yaml:"app"`
-		HTTP `yaml:"http"`
-		Log  `yaml:"logger"`
-		PG   `yaml:"postgres"`
-		CORS `yaml:"cors"`
+		App     `yaml:"app"`
+		HTTP    `yaml:"http"`
+		Log     `yaml:"logger"`
+		PG      `yaml:"postgres"`
+		CORS    `yaml:"cors"`
+		Swagger `yaml:"swagger"`
 	}
 
 	CORS struct {
 		AllowOrigin string `yaml:"allow_origin" env:"CORS_ALLOW_ORIGIN"`
+	}
+
+	Swagger struct {
+		Host string `yaml:"host" env:"SWAGGER_HOST"`
 	}
 
 	App struct {

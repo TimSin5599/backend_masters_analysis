@@ -73,19 +73,20 @@ func (r *StatsRepo) GetGlobalStats(ctx context.Context, programID int64) (usecas
 		s.AIErrorsByCategory = append(s.AIErrorsByCategory, ce)
 	}
 
-	// Average document processing time by day (requires processed_at column from migration 000032)
+	// Average document processing time by day (processing_started_at → processed_at)
 	timeRows, err := r.pool.Query(ctx, `
 		SELECT
-			TO_CHAR(DATE(d.uploaded_at), 'YYYY-MM-DD'),
-			COALESCE(AVG(EXTRACT(EPOCH FROM (d.processed_at - d.uploaded_at)) / 60.0), 0)
+			TO_CHAR(DATE(d.processing_started_at), 'YYYY-MM-DD'),
+			COALESCE(AVG(EXTRACT(EPOCH FROM (d.processed_at - d.processing_started_at)) / 60.0), 0)
 		FROM applicants_document d
 		JOIN applicants a ON d.applicant_id = a.id
 		WHERE d.status = 'completed'
 		  AND d.processed_at IS NOT NULL
-		  AND d.uploaded_at >= NOW() - INTERVAL '30 days'
+		  AND d.processing_started_at IS NOT NULL
+		  AND d.processing_started_at >= NOW() - INTERVAL '30 days'
 		  AND ($1 = 0 OR a.program_id = $1)
-		GROUP BY DATE(d.uploaded_at)
-		ORDER BY DATE(d.uploaded_at)
+		GROUP BY DATE(d.processing_started_at)
+		ORDER BY DATE(d.processing_started_at)
 	`, programID)
 	if err != nil {
 		return s, fmt.Errorf("GetGlobalStats doc_processing: %w", err)

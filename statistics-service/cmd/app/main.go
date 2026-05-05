@@ -7,14 +7,13 @@ import (
 	"syscall"
 
 	"statistics-service/config"
+	statsDocs "statistics-service/docs"
 	v1 "statistics-service/internal/controller/http/v1"
 	"statistics-service/internal/repository"
 	"statistics-service/internal/usecase"
 	"statistics-service/pkg/httpserver"
 	"statistics-service/pkg/logger"
 	"statistics-service/pkg/postgres"
-
-	_ "statistics-service/docs"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,6 +28,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Config error: %s", err)
 	}
+
+	// Swagger
+	swaggerHost := cfg.Swagger.Host
+	if swaggerHost == "" {
+		swaggerHost = "localhost:" + cfg.HTTP.Port
+	}
+	statsDocs.SwaggerInfo.Title = cfg.App.Name
+	statsDocs.SwaggerInfo.Version = cfg.App.Version
+	statsDocs.SwaggerInfo.Host = swaggerHost
 
 	l := logger.New(cfg.Log.Level)
 
