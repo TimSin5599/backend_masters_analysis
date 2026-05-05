@@ -19,3 +19,7 @@ go.work
 
 # Simple config
 config.yml
+
+# Environment
+.env
+!.env.example

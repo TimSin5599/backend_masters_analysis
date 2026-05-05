@@ -1,0 +1,21 @@
+# Environment
+.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Temp files
+temp_uploads/
+debug_images/
+
+# Editor
+.idea
+.vscode
+*.swp
+.DS_Store

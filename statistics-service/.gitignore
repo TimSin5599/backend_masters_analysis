@@ -1,6 +1,5 @@
 # Binaries
 /bin/
-/main
 *.exe
 *.exe~
 *.dll
@@ -10,7 +9,6 @@
 # Test output
 *.test
 *.out
-coverage.html
 
 # Config files
 /config/config.yml
@@ -22,7 +20,7 @@ coverage.html
 # Logs
 *.log
 
-# Editor directories and files
+# Editor
 .idea
 .vscode
 *.swp
