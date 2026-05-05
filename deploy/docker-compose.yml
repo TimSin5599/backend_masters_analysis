@@ -32,16 +32,7 @@ services:
       context: ../auth-service
     container_name: fqw-auth-service
     restart: always
-    environment:
-      - APP_NAME=auth-service
-      - APP_VERSION=1.0.0
-      - HTTP_PORT=8101
-      - LOG_LEVEL=info
-      - PG_POOL_MAX=10
-      - PG_URL=postgres://${PG_USER}:${PG_PASSWORD}@db:5432/${PG_DB}?sslmode=disable
-      - JWT_SIGN_KEY=${JWT_SIGN_KEY}
-      - REDIS_URL=redis://redis:6379/0
-      - CORS_ALLOW_ORIGIN=https://masters-admission.ru
+    env_file: ../auth-service/.env
     depends_on:
       - db
       - redis
@@ -54,21 +45,7 @@ services:
       context: ../manage-service
     container_name: fqw-manage-service
     restart: always
-    environment:
-      - APP_NAME=manage-service
-      - APP_VERSION=1.0.0
-      - HTTP_PORT=8102
-      - LOG_LEVEL=info
-      - PG_POOL_MAX=10
-      - PG_URL=postgres://${PG_USER}:${PG_PASSWORD}@db:5432/${PG_DB}?sslmode=disable
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-      - MINIO_BUCKET=applicants
-      - EXTRACTION_SERVICE_URL=http://extraction-service:8000
-      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
-      - JWT_SIGN_KEY=${JWT_SIGN_KEY}
-      - CORS_ALLOW_ORIGIN=https://masters-admission.ru
+    env_file: ../manage-service/.env
     depends_on:
       - db
       - minio
@@ -84,15 +61,7 @@ services:
       context: ../statistics-service
     container_name: fqw-statistics-service
     restart: always
-    environment:
-      - APP_NAME=statistics-service
-      - APP_VERSION=1.0.0
-      - HTTP_PORT=8103
-      - LOG_LEVEL=info
-      - PG_POOL_MAX=10
-      - PG_URL=postgres://${PG_USER}:${PG_PASSWORD}@db:5432/${PG_DB}?sslmode=disable
-      - JWT_SIGN_KEY=${JWT_SIGN_KEY}
-      - CORS_ALLOW_ORIGIN=https://masters-admission.ru
+    env_file: ../statistics-service/.env
     depends_on:
       - db
     networks:
@@ -151,9 +120,7 @@ services:
       context: ../data-extraction-service
     container_name: fqw-extraction-service
     restart: always
-    environment:
-      - OLLAMA_HOST=${OLLAMA_HOST}
-      - MODEL_NAME=${OLLAMA_MODEL}
+    env_file: ../data-extraction-service/.env
     networks:
       - backend
 

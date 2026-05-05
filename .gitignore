@@ -25,6 +25,7 @@ go.work.sum
 .env.local
 .env.*.local
 *.env
+!.env.example
 
 # IDE
 .idea/
@@ -61,3 +62,6 @@ graphify-out/
 
 # Deploy secrets (keep .env.example, ignore .env)
 deploy/.env
+
+backend/localhost+2-key.pem
+backend/localhost+2.pem

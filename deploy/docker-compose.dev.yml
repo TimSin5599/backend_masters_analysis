@@ -1,0 +1,148 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: fqw-dev-postgres
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB}
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    container_name: fqw-dev-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: fqw-dev-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    networks:
+      - backend
+
+  minio:
+    image: minio/minio
+    container_name: fqw-dev-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_dev_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        until (/usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}) do
+          echo '...waiting for minio...' && sleep 1;
+        done;
+        /usr/bin/mc mb myminio/applicants || true;
+        /usr/bin/mc anonymous set public myminio/applicants;
+        exit 0;
+      "
+    networks:
+      - backend
+
+  auth-service:
+    build:
+      context: ../auth-service
+    container_name: fqw-dev-auth-service
+    env_file: ../auth-service/.env
+    ports:
+      - "8101:8101"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+
+  manage-service:
+    build:
+      context: ../manage-service
+    container_name: fqw-dev-manage-service
+    env_file: ../manage-service/.env
+    ports:
+      - "8102:8102"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      extraction-service:
+        condition: service_started
+    networks:
+      - backend
+
+  statistics-service:
+    build:
+      context: ../statistics-service
+    container_name: fqw-dev-statistics-service
+    env_file: ../statistics-service/.env
+    ports:
+      - "8103:8103"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend
+
+  extraction-service:
+    build:
+      context: ../data-extraction-service
+    container_name: fqw-dev-extraction-service
+    env_file: ../data-extraction-service/.env
+    ports:
+      - "8000:8000"
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+  minio_dev_data:
