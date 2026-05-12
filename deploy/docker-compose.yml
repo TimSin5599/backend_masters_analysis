@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${PG_PASSWORD}
       POSTGRES_DB: ${PG_DB}
     ports:
-      - "127.0.0.1:5435:5432"
+      - "127.0.0.1:${PG_HOST_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -32,7 +32,16 @@ services:
       context: ../auth-service
     container_name: fqw-auth-service
     restart: always
-    env_file: ../auth-service/.env
+    environment:
+      - APP_NAME=auth-service
+      - APP_VERSION=${APP_VERSION}
+      - HTTP_PORT=${AUTH_PORT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - PG_POOL_MAX=${PG_POOL_MAX}
+      - PG_URL=postgres://${PG_USER}:${PG_PASSWORD}@db:5432/${PG_DB}?sslmode=disable
+      - JWT_SIGN_KEY=${JWT_SIGN_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ALLOW_ORIGIN=https://masters-admission.ru
     depends_on:
       - db
       - redis
@@ -45,7 +54,21 @@ services:
       context: ../manage-service
     container_name: fqw-manage-service
     restart: always
-    env_file: ../manage-service/.env
+    environment:
+      - APP_NAME=manage-service
+      - APP_VERSION=${APP_VERSION}
+      - HTTP_PORT=${MANAGE_PORT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - PG_POOL_MAX=${PG_POOL_MAX}
+      - PG_URL=postgres://${PG_USER}:${PG_PASSWORD}@db:5432/${PG_DB}?sslmode=disable
+      - JWT_SIGN_KEY=${JWT_SIGN_KEY}
+      - MINIO_ENDPOINT=minio:${MINIO_PORT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=applicants
+      - EXTRACTION_SERVICE_URL=http://extraction-service:${EXTRACTION_PORT}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      - CORS_ALLOW_ORIGIN=https://masters-admission.ru
     depends_on:
       - db
       - minio
@@ -61,7 +84,15 @@ services:
       context: ../statistics-service
     container_name: fqw-statistics-service
     restart: always
-    env_file: ../statistics-service/.env
+    environment:
+      - APP_NAME=statistics-service
+      - APP_VERSION=${APP_VERSION}
+      - HTTP_PORT=${STATS_PORT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - PG_POOL_MAX=${PG_POOL_MAX}
+      - PG_URL=postgres://${PG_USER}:${PG_PASSWORD}@db:5432/${PG_DB}?sslmode=disable
+      - JWT_SIGN_KEY=${JWT_SIGN_KEY}
+      - CORS_ALLOW_ORIGIN=https://masters-admission.ru
     depends_on:
       - db
     networks:
@@ -91,7 +122,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-    command: server /data --console-address ":9001"
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     volumes:
       - minio_data:/data
     networks:
@@ -104,7 +135,7 @@ services:
       - minio
     entrypoint: >
       /bin/sh -c "
-        until (/usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}) do
+        until (/usr/bin/mc alias set myminio http://minio:${MINIO_PORT} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}) do
           echo '...waiting for minio...' && sleep 1;
         done;
         /usr/bin/mc mb myminio/applicants || true;
@@ -120,7 +151,13 @@ services:
       context: ../data-extraction-service
     container_name: fqw-extraction-service
     restart: always
-    env_file: ../data-extraction-service/.env
+    environment:
+      - APP_TITLE=Data Extraction Service
+      - APP_DESCRIPTION=Service for extracting structured data from documents using Vision AI models.
+      - APP_VERSION=${APP_VERSION}
+      - HTTP_PORT=${EXTRACTION_PORT}
+      - OLLAMA_HOST=${OLLAMA_HOST}
+      - MODEL_NAME=${OLLAMA_MODEL}
     networks:
       - backend
 
