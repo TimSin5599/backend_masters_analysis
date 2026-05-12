@@ -18,6 +18,14 @@ jobs:
         with:
           go-version: '1.25.4' # Укажите вашу точную версию Go
 
+      # Генерация Swagger docs (файлы в .gitignore, но нужны для typecheck)
+      - name: Generate Swagger docs
+        run: |
+          go install github.com/swaggo/swag/cmd/swag@latest
+          cd auth-service       && swag init -g cmd/app/main.go --quiet && cd ..
+          cd manage-service     && swag init -g cmd/app/main.go --quiet && cd ..
+          cd statistics-service && swag init -g cmd/app/main.go --quiet && cd ..
+
       # Линтер для Go
       - name: Run GolangCI-Lint (Auth)
         uses: golangci/golangci-lint-action@v7
