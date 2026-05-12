@@ -2,8 +2,9 @@ package usecase
 
 import (
 	"context"
-	"manage-service/internal/domain/entity"
 	"time"
+
+	"manage-service/internal/domain/entity"
 )
 
 type (
@@ -156,7 +157,7 @@ type (
 		ReprocessLatestDocument(ctx context.Context, applicantID int64, category string) (int64, error)
 		ReprocessDocument(ctx context.Context, documentID int64) error
 		ChangeDocumentCategory(ctx context.Context, documentID int64, newCategory string) error
-	GetDocumentStatus(ctx context.Context, documentID int64) (string, error)
+		GetDocumentStatus(ctx context.Context, documentID int64) (string, error)
 		UpdateDocumentStatus(ctx context.Context, documentID int64, status string) error
 		GetQueueTasks(ctx context.Context, applicantID int64) ([]entity.DocumentQueueTask, error)
 		ProcessAIResult(ctx context.Context, applicantID int64, documentID int64, taskCategory string, rawData map[string]string) error

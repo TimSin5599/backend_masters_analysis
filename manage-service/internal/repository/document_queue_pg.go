@@ -3,8 +3,9 @@ package repository
 import (
 	"context"
 	"fmt"
-	"manage-service/internal/domain/entity"
 	"time"
+
+	"manage-service/internal/domain/entity"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )

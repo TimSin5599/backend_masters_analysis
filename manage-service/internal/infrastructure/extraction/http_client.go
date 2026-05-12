@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"manage-service/internal/domain/entity"
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	"manage-service/internal/domain/entity"
 )
 
 type HTTPClient struct {
@@ -33,7 +34,7 @@ func (c *HTTPClient) TriggerExtraction(ctx context.Context, doc entity.Document,
 	}
 	extractCtx, cancel := context.WithTimeout(ctx, extractTimeout)
 	defer cancel()
-	
+
 	fmt.Printf("[EXTRACTION] Triggering for doc %d (%s) | Size: %d bytes\n", doc.ID, doc.FileName, len(content))
 
 	// Prepare multipart request

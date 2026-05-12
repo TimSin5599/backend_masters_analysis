@@ -3,9 +3,10 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"manage-service/internal/domain/entity"
 	"strings"
 	"time"
+
+	"manage-service/internal/domain/entity"
 )
 
 type ApplicantUseCase struct {
@@ -98,7 +99,7 @@ func (uc *ApplicantUseCase) DeleteApplicant(ctx context.Context, id int64) error
 			_ = uc.docUC.DeleteDocument(ctx, id, doc.ID)
 		}
 	}
-	
+
 	// 2. Delete the applicant from DB
 	return uc.repo.Delete(ctx, id)
 }

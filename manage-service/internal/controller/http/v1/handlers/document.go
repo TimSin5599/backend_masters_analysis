@@ -289,7 +289,7 @@ func (h *DocumentHandler) UploadDocument(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to open file"})
 		return
 	}
-	defer openedFile.Close()
+	defer func() { _ = openedFile.Close() }()
 
 	content := make([]byte, file.Size)
 	_, err = openedFile.Read(content)

@@ -11,10 +11,11 @@ import (
 	"auth-service/internal/controller/http/v1/handlers"
 	"auth-service/internal/domain"
 	"auth-service/internal/domain/entity"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
-
 
 // ─── Mock Auth UseCase ────────────────────────────────────────────────────────
 
@@ -116,7 +117,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]string
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "access-token", resp["access_token"])
 }
 
@@ -158,7 +159,7 @@ func TestAuthHandler_Refresh_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]string
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "new-access", resp["access_token"])
 }
 

@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"manage-service/internal/domain/entity"
 	"manage-service/internal/usecase"
-	"github.com/stretchr/testify/assert"
 )
 
 // ─── Mock ApplicantRepo ───────────────────────────────────────────────────────

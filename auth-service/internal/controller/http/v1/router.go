@@ -20,7 +20,7 @@ import (
 
 func NewRouter(handler *gin.Engine, t usecase.Auth, u usecase.User, jwtSecret string, corsOrigin string) {
 	mw := NewMiddleware(jwtSecret, u)
-	
+
 	handler.Use(mw.LoggingMiddleware())
 
 	// Для работы с httpOnly cookie нужен конкретный origin (не "*") и AllowCredentials: true
@@ -47,7 +47,7 @@ func NewRouter(handler *gin.Engine, t usecase.Auth, u usecase.User, jwtSecret st
 	}))
 
 	authHandler := handlers.NewAuthHandler(t)
-    userHandler := handlers.NewUserHandler(u)
+	userHandler := handlers.NewUserHandler(u)
 
 	v1 := handler.Group("/v1")
 	{

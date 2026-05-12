@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"manage-service/internal/domain/entity"
 )
 
@@ -120,7 +121,7 @@ func (r *ExpertRepo) SaveEvaluationBatch(ctx context.Context, evaluations []enti
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	for _, eval := range evaluations {
 		query := `INSERT INTO expert_evaluations

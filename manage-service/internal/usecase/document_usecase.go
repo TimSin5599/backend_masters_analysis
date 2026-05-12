@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"manage-service/internal/domain/entity"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"manage-service/internal/domain/entity"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type DocumentUseCase struct {
@@ -67,11 +71,10 @@ func (uc *DocumentUseCase) UploadDocument(ctx context.Context, applicantID int64
 	// Update applicant status to 'processing'
 	_ = uc.appRepo.Update(ctx, entity.Applicant{ID: applicantID, Status: entity.ApplicantStatusProcessing})
 
-
 	// 3. Добавление задачи в очередь (RabbitMQ & PostgreSQL)
 	priority := 5
 	lowerName := strings.ToLower(fileName)
-	
+
 	switch category {
 	case "passport":
 		priority = 10
@@ -145,10 +148,9 @@ func (uc *DocumentUseCase) ReprocessDocument(ctx context.Context, documentID int
 	// Update applicant status to 'processing'
 	_ = uc.appRepo.Update(ctx, entity.Applicant{ID: doc.ApplicantID, Status: entity.ApplicantStatusProcessing})
 
-
 	// 3. Добавление задачи в очередь (RabbitMQ & PostgreSQL)
 	priority := 10 // Повторное сканирование вручную всегда получает высокий приоритет
-	
+
 	// Если это перенос из unknown, сохраняем высокий приоритет
 	if doc.FileType == "unknown" {
 		priority = 10
@@ -255,7 +257,7 @@ func (uc *DocumentUseCase) ProcessAIResult(ctx context.Context, applicantID int6
 			}
 		}
 		// Try to handle "10 OCT 1995" if it comes in uppercase or variations
-		s_cl := strings.Title(strings.ToLower(s))
+		s_cl := cases.Title(language.Und).String(strings.ToLower(s))
 		if t, e := time.Parse("02 Jan 2006", s_cl); e == nil {
 			return t
 		}

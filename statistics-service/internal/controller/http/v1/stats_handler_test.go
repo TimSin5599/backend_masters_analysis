@@ -8,10 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	v1 "statistics-service/internal/controller/http/v1"
-	"statistics-service/internal/usecase"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+
+	v1 "statistics-service/internal/controller/http/v1"
+	"statistics-service/internal/usecase"
 )
 
 // ─── Mock StatsRepo ───────────────────────────────────────────────────────────

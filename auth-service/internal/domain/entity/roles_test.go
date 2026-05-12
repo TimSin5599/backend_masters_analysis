@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"auth-service/internal/domain/entity"
+
 	"github.com/stretchr/testify/assert"
 )
 

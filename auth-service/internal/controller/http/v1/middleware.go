@@ -18,18 +18,18 @@ import (
 )
 
 type Middleware struct {
-    userUC           usecase.User
-    secretKey        string
-    lastOnlineMu     sync.Mutex
-    lastOnlineUpdates map[string]time.Time
+	userUC            usecase.User
+	secretKey         string
+	lastOnlineMu      sync.Mutex
+	lastOnlineUpdates map[string]time.Time
 }
 
 func NewMiddleware(secretKey string, userUC usecase.User) *Middleware {
-    return &Middleware{
-        secretKey:         secretKey,
-        userUC:            userUC,
-        lastOnlineUpdates: make(map[string]time.Time),
-    }
+	return &Middleware{
+		secretKey:         secretKey,
+		userUC:            userUC,
+		lastOnlineUpdates: make(map[string]time.Time),
+	}
 }
 
 // LoggingMiddleware — middleware для логирования и сбора Prometheus HTTP-метрик.
@@ -52,8 +52,8 @@ func (m *Middleware) LoggingMiddleware() gin.HandlerFunc {
 			path = "unknown"
 		}
 
-		metrics.HttpRequestsTotal.WithLabelValues(c.Request.Method, path, status).Inc()
-		metrics.HttpRequestDuration.WithLabelValues(c.Request.Method, path).Observe(duration)
+		metrics.HTTPRequestsTotal.WithLabelValues(c.Request.Method, path, status).Inc()
+		metrics.HTTPRequestDuration.WithLabelValues(c.Request.Method, path).Observe(duration)
 
 		fmt.Printf("[ОТВЕТ] Статус: %s | Время: %v | Путь: %s\n",
 			status,

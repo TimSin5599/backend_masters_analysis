@@ -9,23 +9,24 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"manage-service/internal/controller/http/v1/handlers"
-	"manage-service/internal/domain/entity"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+
+	"manage-service/internal/controller/http/v1/handlers"
+	"manage-service/internal/domain/entity"
 )
 
 // ─── Mock Applicant UseCase ───────────────────────────────────────────────────
 
 type mockApplicantUC struct {
-	CreateApplicantFunc      func(ctx context.Context, programID int64, firstName, lastName, patronymic string) (entity.Applicant, error)
-	ListApplicantsFunc       func(ctx context.Context, programID int64) ([]entity.Applicant, error)
-	DeleteApplicantFunc      func(ctx context.Context, id int64) error
-	GetApplicantDataFunc     func(ctx context.Context, applicantID int64, category string) (interface{}, error)
-	UpdateApplicantDataFunc  func(ctx context.Context, applicantID int64, category string, rawData map[string]interface{}) error
-	DeleteApplicantDataFunc  func(ctx context.Context, applicantID int64, category string, dataID int64) error
-	TransferToOperatorFunc   func(ctx context.Context, applicantID int64) error
-	TransferToExpertsFunc    func(ctx context.Context, applicantID int64, confirmedBy string) error
+	CreateApplicantFunc     func(ctx context.Context, programID int64, firstName, lastName, patronymic string) (entity.Applicant, error)
+	ListApplicantsFunc      func(ctx context.Context, programID int64) ([]entity.Applicant, error)
+	DeleteApplicantFunc     func(ctx context.Context, id int64) error
+	GetApplicantDataFunc    func(ctx context.Context, applicantID int64, category string) (interface{}, error)
+	UpdateApplicantDataFunc func(ctx context.Context, applicantID int64, category string, rawData map[string]interface{}) error
+	DeleteApplicantDataFunc func(ctx context.Context, applicantID int64, category string, dataID int64) error
+	TransferToOperatorFunc  func(ctx context.Context, applicantID int64) error
+	TransferToExpertsFunc   func(ctx context.Context, applicantID int64, confirmedBy string) error
 }
 
 func (m *mockApplicantUC) CreateApplicant(ctx context.Context, programID int64, firstName, lastName, patronymic string) (entity.Applicant, error) {
@@ -114,7 +115,7 @@ func TestApplicantHandler_ListApplicants_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp []entity.Applicant
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Len(t, resp, 2)
 }
 
@@ -151,7 +152,7 @@ func TestApplicantHandler_CreateApplicant_Success(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var resp entity.Applicant
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, int64(42), resp.ID)
 }
 

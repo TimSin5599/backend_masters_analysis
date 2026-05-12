@@ -5,22 +5,23 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"manage-service/internal/domain"
 	"manage-service/internal/domain/entity"
 	"manage-service/internal/usecase"
-	"github.com/stretchr/testify/assert"
 )
 
 // ─── Mock ExpertRepo (with function fields) ───────────────────────────────────
 
 type mockExpertRepoFull struct {
-	GetCriteriaFunc            func(ctx context.Context) ([]entity.EvaluationCriteria, error)
-	ListEvaluationsFunc        func(ctx context.Context, applicantID int64) ([]entity.ExpertEvaluation, error)
-	GetExpertSlotByUserIDFunc  func(ctx context.Context, userID string, programID int64) (entity.ExpertSlot, error)
-	SaveEvaluationBatchFunc    func(ctx context.Context, evals []entity.ExpertEvaluation) error
-	GetExpertSlotsFunc         func(ctx context.Context, programID int64) ([]entity.ExpertSlot, error)
-	GetUsersByRolesFunc        func(ctx context.Context, roles []string) ([]entity.User, error)
-	GetAggregatedScoreFunc     func(ctx context.Context, applicantID int64, categories []string) (float64, error)
+	GetCriteriaFunc           func(ctx context.Context) ([]entity.EvaluationCriteria, error)
+	ListEvaluationsFunc       func(ctx context.Context, applicantID int64) ([]entity.ExpertEvaluation, error)
+	GetExpertSlotByUserIDFunc func(ctx context.Context, userID string, programID int64) (entity.ExpertSlot, error)
+	SaveEvaluationBatchFunc   func(ctx context.Context, evals []entity.ExpertEvaluation) error
+	GetExpertSlotsFunc        func(ctx context.Context, programID int64) ([]entity.ExpertSlot, error)
+	GetUsersByRolesFunc       func(ctx context.Context, roles []string) ([]entity.User, error)
+	GetAggregatedScoreFunc    func(ctx context.Context, applicantID int64, categories []string) (float64, error)
 }
 
 func (m *mockExpertRepoFull) StoreEvaluation(ctx context.Context, eval entity.ExpertEvaluation) error {
@@ -94,9 +95,9 @@ func (m *mockExpertRepoFull) GetUsersByRoles(ctx context.Context, roles []string
 // ─── Mock ApplicantRepo (minimal for expert usecase) ─────────────────────────
 
 type mockAppRepoForExpert struct {
-	GetByIDFunc      func(ctx context.Context, id int64) (entity.Applicant, error)
-	GetScoringSchemeFunc func(ctx context.Context, applicantID int64) (string, error)
-	SetScoringSchemeFunc func(ctx context.Context, applicantID int64, scheme string) error
+	GetByIDFunc                func(ctx context.Context, id int64) (entity.Applicant, error)
+	GetScoringSchemeFunc       func(ctx context.Context, applicantID int64) (string, error)
+	SetScoringSchemeFunc       func(ctx context.Context, applicantID int64, scheme string) error
 	UpdateApplicantRankingFunc func(ctx context.Context, applicantID int64, score float64, status string) error
 }
 

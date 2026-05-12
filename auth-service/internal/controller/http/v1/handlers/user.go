@@ -102,9 +102,9 @@ func (r *userHandler) GetUserByID(c *gin.Context) {
 func (r *userHandler) CreateUser(c *gin.Context) {
 	var req createUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
-        return
-    }
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
 
 	user := entity.User{
 		Email:     req.Email,
@@ -166,15 +166,15 @@ func (r *userHandler) UpdateUser(c *gin.Context) {
 	}
 
 	if err := r.uc.UpdateUser(c.Request.Context(), user); err != nil {
-        switch err {
-        case domain.ErrUserNotFound:
-            c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-        default:
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
-        }
-        return
-    }
-	
+		switch err {
+		case domain.ErrUserNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		}
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
 }
 
@@ -190,7 +190,6 @@ func (r *userHandler) DeleteUser(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
-
 
 func toUserResponse(u entity.User) userResponse {
 	return userResponse{

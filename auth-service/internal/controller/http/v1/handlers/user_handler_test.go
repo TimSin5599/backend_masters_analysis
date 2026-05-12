@@ -10,8 +10,10 @@ import (
 	"auth-service/internal/controller/http/v1/handlers"
 	"auth-service/internal/domain"
 	"auth-service/internal/domain/entity"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ─── Mock User UseCase ────────────────────────────────────────────────────────
@@ -99,7 +101,7 @@ func TestUserHandler_GetCurrentUser_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "a@b.com", resp["email"])
 }
 
@@ -126,7 +128,7 @@ func TestUserHandler_ListUsers(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, float64(2), resp["count"])
 }
 
@@ -160,7 +162,7 @@ func TestUserHandler_CreateUser_Success(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "new-uid", resp["id"])
 }
 

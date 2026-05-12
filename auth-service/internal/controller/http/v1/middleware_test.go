@@ -9,6 +9,7 @@ import (
 	v1 "auth-service/internal/controller/http/v1"
 	"auth-service/internal/domain/entity"
 	pkgjwt "auth-service/pkg/jwt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
@@ -34,19 +35,19 @@ func (m *middlewareMockUserUC) DeleteUser(ctx context.Context, id string) error 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-func newMiddlewareRouter(secret string) *gin.Engine {
+func newMiddlewareRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	mw := v1.NewMiddleware(secret, &middlewareMockUserUC{})
+	mw := v1.NewMiddleware(testSecret, &middlewareMockUserUC{})
 
 	protected := r.Group("/protected")
-	protected.Use(mw.JWTMiddleware(secret, &middlewareMockUserUC{}))
+	protected.Use(mw.JWTMiddleware(testSecret, &middlewareMockUserUC{}))
 	protected.GET("/ping", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"userID": c.GetString("userID")})
 	})
 
 	adminOnly := r.Group("/admin")
-	adminOnly.Use(mw.JWTMiddleware(secret, &middlewareMockUserUC{}))
+	adminOnly.Use(mw.JWTMiddleware(testSecret, &middlewareMockUserUC{}))
 	adminOnly.Use(mw.AdminMiddleware())
 	adminOnly.GET("/ping", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -55,15 +56,15 @@ func newMiddlewareRouter(secret string) *gin.Engine {
 	return r
 }
 
-func makeToken(userID string, roles []string, secret string) string {
-	token, _ := pkgjwt.GenerateAccessToken(userID, "u@test.com", roles, secret)
+func makeToken(roles []string, secret string) string {
+	token, _ := pkgjwt.GenerateAccessToken("uid1", "u@test.com", roles, secret)
 	return token
 }
 
 // ─── JWTMiddleware ────────────────────────────────────────────────────────────
 
 func TestJWTMiddleware_NoHeader(t *testing.T) {
-	r := newMiddlewareRouter(testSecret)
+	r := newMiddlewareRouter()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/protected/ping", nil)
 	r.ServeHTTP(w, req)
@@ -71,7 +72,7 @@ func TestJWTMiddleware_NoHeader(t *testing.T) {
 }
 
 func TestJWTMiddleware_BadFormat(t *testing.T) {
-	r := newMiddlewareRouter(testSecret)
+	r := newMiddlewareRouter()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/protected/ping", nil)
 	req.Header.Set("Authorization", "InvalidToken")
@@ -80,8 +81,8 @@ func TestJWTMiddleware_BadFormat(t *testing.T) {
 }
 
 func TestJWTMiddleware_WrongSecret(t *testing.T) {
-	token := makeToken("uid1", []string{entity.RoleAdmin}, "other-secret")
-	r := newMiddlewareRouter(testSecret)
+	token := makeToken([]string{entity.RoleAdmin}, "other-secret")
+	r := newMiddlewareRouter()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/protected/ping", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -90,8 +91,8 @@ func TestJWTMiddleware_WrongSecret(t *testing.T) {
 }
 
 func TestJWTMiddleware_ValidToken(t *testing.T) {
-	token := makeToken("uid1", []string{entity.RoleAdmin}, testSecret)
-	r := newMiddlewareRouter(testSecret)
+	token := makeToken([]string{entity.RoleAdmin}, testSecret)
+	r := newMiddlewareRouter()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/protected/ping", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -102,8 +103,8 @@ func TestJWTMiddleware_ValidToken(t *testing.T) {
 // ─── AdminMiddleware ──────────────────────────────────────────────────────────
 
 func TestAdminMiddleware_NonAdmin(t *testing.T) {
-	token := makeToken("uid1", []string{entity.RoleExpert}, testSecret)
-	r := newMiddlewareRouter(testSecret)
+	token := makeToken([]string{entity.RoleExpert}, testSecret)
+	r := newMiddlewareRouter()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/admin/ping", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -112,8 +113,8 @@ func TestAdminMiddleware_NonAdmin(t *testing.T) {
 }
 
 func TestAdminMiddleware_Admin(t *testing.T) {
-	token := makeToken("uid1", []string{entity.RoleAdmin}, testSecret)
-	r := newMiddlewareRouter(testSecret)
+	token := makeToken([]string{entity.RoleAdmin}, testSecret)
+	r := newMiddlewareRouter()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/admin/ping", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -129,7 +130,7 @@ func TestJWTMiddleware_ExpiredToken(t *testing.T) {
 		"eyJleHAiOjEsImlhdCI6MSwic3ViIjoidWlkMSIsInVzZXIiOnsiZW1haWwiOiJ1QHRlc3QuY29tIiwicm9sZXMiOlsiYWRtaW4iXX19." +
 		"signature-placeholder"
 
-	r := newMiddlewareRouter(testSecret)
+	r := newMiddlewareRouter()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/protected/ping", nil)
 	req.Header.Set("Authorization", "Bearer "+expiredToken)

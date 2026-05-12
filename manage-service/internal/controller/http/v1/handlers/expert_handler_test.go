@@ -7,11 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+
 	"manage-service/internal/controller/http/v1/handlers"
 	"manage-service/internal/domain"
 	"manage-service/internal/domain/entity"
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/assert"
 )
 
 // ─── Mock Expert UseCase ──────────────────────────────────────────────────────
@@ -107,7 +108,7 @@ func TestExpertHandler_ListCriteria_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp []entity.EvaluationCriteria
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Len(t, resp, 1)
 }
 
@@ -166,7 +167,7 @@ func TestExpertHandler_ListExpertEvaluations_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp []entity.ExpertEvaluation
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Len(t, resp, 1)
 }
 
@@ -252,6 +253,6 @@ func TestExpertHandler_ListExperts_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp []entity.User
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Len(t, resp, 2)
 }

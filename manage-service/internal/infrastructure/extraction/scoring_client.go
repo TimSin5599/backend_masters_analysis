@@ -6,8 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"manage-service/internal/domain/entity"
 	"net/http"
+
+	"manage-service/internal/domain/entity"
 )
 
 // ScoringHTTPClient реализует интерфейс usecase.ScoringClient.

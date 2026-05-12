@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+
 	"manage-service/internal/usecase"
 )
 
@@ -15,6 +16,7 @@ type ApplicantHandler struct {
 func NewApplicantHandler(uc usecase.Applicant) *ApplicantHandler {
 	return &ApplicantHandler{uc: uc}
 }
+
 // @Summary     Удаление абитуриента
 // @Description Удаляет абитуриента и все связанные с ним данные по ID.
 // @Tags        applicants

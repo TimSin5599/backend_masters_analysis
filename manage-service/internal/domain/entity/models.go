@@ -12,16 +12,16 @@ type Program struct {
 }
 
 type Applicant struct {
-	ID               int64      `json:"id"`
-	ProgramID        int64      `json:"program_id"`
-	Status           string     `json:"status"`
-	FirstName        string     `json:"first_name,omitempty"`
-	LastName         string     `json:"last_name,omitempty"`
-	Patronymic       string     `json:"patronymic,omitempty"`
+	ID              int64      `json:"id"`
+	ProgramID       int64      `json:"program_id"`
+	Status          string     `json:"status"`
+	FirstName       string     `json:"first_name,omitempty"`
+	LastName        string     `json:"last_name,omitempty"`
+	Patronymic      string     `json:"patronymic,omitempty"`
 	Score           float64    `json:"score"` // Maps to aggregated_score for legacy compatibility
 	AggregatedScore float64    `json:"aggregated_score"`
 	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
+	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
 }
 
 type Document struct {
@@ -217,14 +217,14 @@ type ExpertEvaluation struct {
 }
 
 type EvaluationCriteria struct {
-	Code          string  `json:"code"`
-	Title         string  `json:"title"`
-	MaxScore      int     `json:"max_score"`
-	Type          string  `json:"type"`           // BASE, BLOCKING
-	DocumentTypes []string `json:"document_types"` // associated document file_type values
-	IsMandatory   bool    `json:"is_mandatory"`   // must be uploaded before transfer
-	Scheme        string  `json:"scheme"`         // default, ieee
-	ProgramID     *int64  `json:"program_id,omitempty"` // nil = applies to all programs
+	Code          string   `json:"code"`
+	Title         string   `json:"title"`
+	MaxScore      int      `json:"max_score"`
+	Type          string   `json:"type"`                 // BASE, BLOCKING
+	DocumentTypes []string `json:"document_types"`       // associated document file_type values
+	IsMandatory   bool     `json:"is_mandatory"`         // must be uploaded before transfer
+	Scheme        string   `json:"scheme"`               // default, ieee
+	ProgramID     *int64   `json:"program_id,omitempty"` // nil = applies to all programs
 }
 
 type AggregatedEvaluation struct {

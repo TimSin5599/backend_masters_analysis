@@ -7,6 +7,7 @@ import (
 	"auth-service/internal/domain"
 	"auth-service/internal/domain/entity"
 	"auth-service/internal/usecase"
+
 	"github.com/stretchr/testify/assert"
 )
 

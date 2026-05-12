@@ -8,20 +8,21 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"manage-service/internal/controller/http/v1/handlers"
-	"manage-service/internal/domain/entity"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+
+	"manage-service/internal/controller/http/v1/handlers"
+	"manage-service/internal/domain/entity"
 )
 
 // ─── Mock Document UseCase ────────────────────────────────────────────────────
 
 type mockDocumentHandlerUC struct {
-	GetDocumentStatusFunc      func(ctx context.Context, documentID int64) (string, error)
-	UpdateDocumentStatusFunc   func(ctx context.Context, documentID int64, status string) error
-	GetDocumentsFunc           func(ctx context.Context, applicantID int64) ([]entity.Document, error)
+	GetDocumentStatusFunc       func(ctx context.Context, documentID int64) (string, error)
+	UpdateDocumentStatusFunc    func(ctx context.Context, documentID int64, status string) error
+	GetDocumentsFunc            func(ctx context.Context, applicantID int64) ([]entity.Document, error)
 	ReprocessLatestDocumentFunc func(ctx context.Context, applicantID int64, category string) (int64, error)
-	ReprocessDocumentFunc      func(ctx context.Context, documentID int64) error
+	ReprocessDocumentFunc       func(ctx context.Context, documentID int64) error
 }
 
 func (m *mockDocumentHandlerUC) UploadDocument(ctx context.Context, applicantID int64, category string, fileName string, content []byte, docType string) (entity.Document, error) {
@@ -123,7 +124,7 @@ func TestDocumentHandler_GetDocumentStatus_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]string
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "processing", resp["status"])
 }
 
@@ -206,7 +207,7 @@ func TestDocumentHandler_ReprocessLatestDocument_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, float64(10), resp["document_id"])
 }
 

@@ -7,6 +7,7 @@ import (
 	"auth-service/internal/domain"
 	"auth-service/internal/domain/entity"
 	"auth-service/internal/usecase"
+
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -74,10 +75,10 @@ func (m *mockUserRepo) Delete(ctx context.Context, id string) error {
 }
 
 type mockTokenRepo struct {
-	StoreRefreshTokenFunc          func(ctx context.Context, userID, token string) error
-	GetUserIDByRefreshTokenFunc    func(ctx context.Context, token string) (string, error)
-	DeleteRefreshTokenFunc         func(ctx context.Context, token string) error
-	DeleteAllRefreshTokensFunc     func(ctx context.Context, userID string) error
+	StoreRefreshTokenFunc       func(ctx context.Context, userID, token string) error
+	GetUserIDByRefreshTokenFunc func(ctx context.Context, token string) (string, error)
+	DeleteRefreshTokenFunc      func(ctx context.Context, token string) error
+	DeleteAllRefreshTokensFunc  func(ctx context.Context, userID string) error
 }
 
 func (m *mockTokenRepo) StoreRefreshToken(ctx context.Context, userID, token string) error {
