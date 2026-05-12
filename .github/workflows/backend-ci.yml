@@ -20,19 +20,19 @@ jobs:
 
       # Линтер для Go
       - name: Run GolangCI-Lint (Auth)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.6.2
           working-directory: auth-service
 
       - name: Run GolangCI-Lint (Manage)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.6.2
           working-directory: manage-service
 
       - name: Run GolangCI-Lint (Statistics)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.6.2
           working-directory: statistics-service
