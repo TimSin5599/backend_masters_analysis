@@ -37,7 +37,7 @@ CREATE TABLE public.users (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     email varchar(255) NOT NULL,
     password varchar(255) NOT NULL,
-    role varchar(50) DEFAULT 'user'::character varying NOT NULL,
+    roles text[] DEFAULT '{}'::text[] NOT NULL,
     created_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
     updated_at timestamptz DEFAULT CURRENT_TIMESTAMP NULL,
     last_online timestamp DEFAULT CURRENT_TIMESTAMP NULL,
@@ -74,6 +74,7 @@ CREATE TABLE public.applicants_document (
     uploaded_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
     status varchar(50) DEFAULT 'uploaded'::character varying NULL,
     processed_at timestamptz NULL,
+    processing_started_at timestamptz NULL,
     CONSTRAINT applicants_document_pkey PRIMARY KEY (id),
     CONSTRAINT applicants_document_applicant_id_fkey FOREIGN KEY (applicant_id) REFERENCES public.applicants(id) ON DELETE CASCADE
 );
@@ -336,14 +337,15 @@ CREATE TABLE public.applicants_data_work_experience (
     created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
     document_id int8 NULL,
     record_type varchar(255) NULL,
+    competencies text NULL,
     CONSTRAINT applicants_data_work_experience_pkey PRIMARY KEY (id),
     CONSTRAINT applicants_data_work_experience_applicant_id_fkey FOREIGN KEY (applicant_id) REFERENCES public.applicants(id) ON DELETE CASCADE,
     CONSTRAINT applicants_data_work_experience_document_id_fkey FOREIGN KEY (document_id) REFERENCES public.applicants_document(id) ON DELETE CASCADE
 );
 
 -- Seed: admin user (password = 'password', bcrypt hash)
-INSERT INTO public.users (email, password, role, first_name, last_name)
-VALUES ('admin@masters.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 'Admin', 'User')
+INSERT INTO public.users (email, password, roles, first_name, last_name)
+VALUES ('admin@masters.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', ARRAY['admin'], 'Admin', 'User')
 ON CONFLICT (email) DO NOTHING;
 
 -- Seed: evaluation criteria (from migration 000023 + 000026)
