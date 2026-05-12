@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -111,6 +112,7 @@ func NewRouter(
 		v1.DELETE("/criteria/:code", AdminMiddleware(), expertHandler.DeleteCriteria)
 	}
 
+	handler.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	handler.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	fmt.Printf("[MANAGE] Router initialized | CORS origin: %s | JWT protection: enabled\n", allowOrigin)
 }

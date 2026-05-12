@@ -1,0 +1,373 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["overview"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Overview",
+  "uid": "overview",
+  "version": 1,
+  "templating": {
+    "list": [
+      {
+        "current": {}, "hide": 0, "name": "datasource",
+        "options": [], "query": "prometheus", "refresh": 1, "type": "datasource"
+      }
+    ]
+  },
+  "panels": [
+
+    { "id": 100, "type": "row", "title": "Auth Service", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false },
+
+    {
+      "id": 1, "type": "stat", "title": "Auth — статус",
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } }
+          ],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "links": [{ "title": "Auth Service →", "url": "/d/auth-service/auth-service" }]
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "up{job=\"auth-service\"}", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Auth — RPS",
+      "gridPos": { "x": 4, "y": 1, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "links": [{ "title": "Auth Service →", "url": "/d/auth-service/auth-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "sum(rate(http_requests_total{job=\"auth-service\"}[1m]))", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Auth — ошибки 5xx, %",
+      "gridPos": { "x": 9, "y": 1, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }
+          ]},
+          "links": [{ "title": "Auth Service →", "url": "/d/auth-service/auth-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "100 * (sum(rate(http_requests_total{job=\"auth-service\",status=~\"5..\"}[5m])) or vector(0)) / sum(rate(http_requests_total{job=\"auth-service\"}[5m]))",
+        "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Auth — p95 задержка",
+      "gridPos": { "x": 14, "y": 1, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 200 }, { "color": "red", "value": 500 }
+          ]},
+          "links": [{ "title": "Auth Service →", "url": "/d/auth-service/auth-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "histogram_quantile(0.95, sum by(le)(rate(http_request_duration_seconds_bucket{job=\"auth-service\"}[5m]))) * 1000",
+        "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 5, "type": "stat", "title": "Auth — неудачных логинов/мин",
+      "gridPos": { "x": 19, "y": 1, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }
+          ]},
+          "links": [{ "title": "Auth Service →", "url": "/d/auth-service/auth-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "sum(rate(auth_login_attempts_total{result!=\"success\"}[1m]))", "instant": true, "refId": "A" }]
+    },
+
+    { "id": 200, "type": "row", "title": "Manage Service", "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 }, "collapsed": false },
+
+    {
+      "id": 11, "type": "stat", "title": "Manage — статус",
+      "gridPos": { "x": 0, "y": 6, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } }
+          ],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "links": [{ "title": "Manage Service →", "url": "/d/manage-service/manage-service" }]
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "up{job=\"manage-service\"}", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 12, "type": "stat", "title": "Manage — RPS",
+      "gridPos": { "x": 4, "y": 6, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "links": [{ "title": "Manage Service →", "url": "/d/manage-service/manage-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "sum(rate(http_requests_total{job=\"manage-service\"}[1m]))", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 13, "type": "stat", "title": "Manage — ошибки 5xx, %",
+      "gridPos": { "x": 9, "y": 6, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }
+          ]},
+          "links": [{ "title": "Manage Service →", "url": "/d/manage-service/manage-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "100 * (sum(rate(http_requests_total{job=\"manage-service\",status=~\"5..\"}[5m])) or vector(0)) / sum(rate(http_requests_total{job=\"manage-service\"}[5m]))",
+        "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 14, "type": "stat", "title": "Manage — p95 задержка",
+      "gridPos": { "x": 14, "y": 6, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 200 }, { "color": "red", "value": 500 }
+          ]},
+          "links": [{ "title": "Manage Service →", "url": "/d/manage-service/manage-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "histogram_quantile(0.95, sum by(le)(rate(http_request_duration_seconds_bucket{job=\"manage-service\"}[5m]))) * 1000",
+        "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 15, "type": "stat", "title": "Manage — SSE клиентов",
+      "gridPos": { "x": 19, "y": 6, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "links": [{ "title": "Manage Service →", "url": "/d/manage-service/manage-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "manage_sse_active_clients", "instant": true, "refId": "A" }]
+    },
+
+    { "id": 300, "type": "row", "title": "Statistics Service", "gridPos": { "x": 0, "y": 10, "w": 24, "h": 1 }, "collapsed": false },
+
+    {
+      "id": 21, "type": "stat", "title": "Stats — статус",
+      "gridPos": { "x": 0, "y": 11, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } }
+          ],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "links": [{ "title": "Statistics Service →", "url": "/d/statistics-service/statistics-service" }]
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "up{job=\"statistics-service\"}", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 22, "type": "stat", "title": "Stats — RPS",
+      "gridPos": { "x": 4, "y": 11, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "links": [{ "title": "Statistics Service →", "url": "/d/statistics-service/statistics-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "sum(rate(http_requests_total{job=\"statistics-service\"}[1m]))", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 23, "type": "stat", "title": "Stats — ошибки 5xx, %",
+      "gridPos": { "x": 9, "y": 11, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }
+          ]},
+          "links": [{ "title": "Statistics Service →", "url": "/d/statistics-service/statistics-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "100 * (sum(rate(http_requests_total{job=\"statistics-service\",status=~\"5..\"}[5m])) or vector(0)) / sum(rate(http_requests_total{job=\"statistics-service\"}[5m]))",
+        "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 24, "type": "stat", "title": "Stats — p95 задержка",
+      "gridPos": { "x": 14, "y": 11, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 1000 }
+          ]},
+          "links": [{ "title": "Statistics Service →", "url": "/d/statistics-service/statistics-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "histogram_quantile(0.95, sum by(le)(rate(http_request_duration_seconds_bucket{job=\"statistics-service\"}[5m]))) * 1000",
+        "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 25, "type": "stat", "title": "Stats — p95 DB query",
+      "gridPos": { "x": 19, "y": 11, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 2000 }
+          ]},
+          "links": [{ "title": "Statistics Service →", "url": "/d/statistics-service/statistics-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "histogram_quantile(0.95, sum by(le)(rate(stats_query_duration_seconds_bucket[5m]))) * 1000",
+        "instant": true, "refId": "A" }]
+    },
+
+    { "id": 400, "type": "row", "title": "Extraction Service (AI)", "gridPos": { "x": 0, "y": 15, "w": 24, "h": 1 }, "collapsed": false },
+
+    {
+      "id": 31, "type": "stat", "title": "Extraction — статус",
+      "gridPos": { "x": 0, "y": 16, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } }
+          ],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "links": [{ "title": "Extraction Service →", "url": "/d/extraction-service/extraction-service" }]
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "up{job=\"extraction-service\"}", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 32, "type": "stat", "title": "Extraction — RPS",
+      "gridPos": { "x": 4, "y": 16, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "links": [{ "title": "Extraction Service →", "url": "/d/extraction-service/extraction-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "sum(rate(http_requests_total{job=\"extraction-service\"}[1m]))", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 33, "type": "stat", "title": "Extraction — ошибки AI, всего",
+      "gridPos": { "x": 9, "y": 16, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }
+          ]},
+          "links": [{ "title": "Extraction Service →", "url": "/d/extraction-service/extraction-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "sum(extraction_errors_total)", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 34, "type": "stat", "title": "Extraction — p95 extract",
+      "gridPos": { "x": 14, "y": 16, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 30 }, { "color": "red", "value": 90 }
+          ]},
+          "links": [{ "title": "Extraction Service →", "url": "/d/extraction-service/extraction-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "histogram_quantile(0.95, sum by(le)(rate(extraction_duration_seconds_bucket{operation=\"extract\"}[10m])))",
+        "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 35, "type": "stat", "title": "Extraction — p95 classify",
+      "gridPos": { "x": 19, "y": 16, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 30 }
+          ]},
+          "links": [{ "title": "Extraction Service →", "url": "/d/extraction-service/extraction-service" }] },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "histogram_quantile(0.95, sum by(le)(rate(extraction_duration_seconds_bucket{operation=\"classify\"}[10m])))",
+        "instant": true, "refId": "A" }]
+    }
+  ]
+}

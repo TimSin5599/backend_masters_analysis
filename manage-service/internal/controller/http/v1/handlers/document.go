@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"manage-service/internal/usecase"
+	"manage-service/pkg/metrics"
 )
 
 type DocumentHandler struct {
@@ -303,6 +304,7 @@ func (h *DocumentHandler) UploadDocument(c *gin.Context) {
 		return
 	}
 
+	metrics.DocumentsUploadedTotal.WithLabelValues(category).Inc()
 	c.JSON(http.StatusOK, gin.H{"message": "document uploaded and processing started", "document_id": doc.ID})
 }
 

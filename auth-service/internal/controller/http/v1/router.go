@@ -5,11 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"auth-service/internal/usecase"
 	"auth-service/internal/controller/http/v1/handlers"
+	"auth-service/internal/usecase"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	_ "auth-service/docs"
 
@@ -75,6 +76,7 @@ func NewRouter(handler *gin.Engine, t usecase.Auth, u usecase.User, jwtSecret st
 		}
 	}
 
+	handler.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	handler.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	fmt.Println("\n=== ЗАРЕГИСТРИРОВАННЫЕ ЭНДПОИНТЫ ===")

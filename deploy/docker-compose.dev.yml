@@ -97,6 +97,10 @@ services:
       - SWAGGER_HOST=localhost:${AUTH_PORT}
     ports:
       - "${AUTH_PORT}:${AUTH_PORT}"
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=${AUTH_PORT}"
+      - "prometheus.job=auth-service"
     depends_on:
       db:
         condition: service_healthy
@@ -127,6 +131,10 @@ services:
       - SWAGGER_HOST=localhost:${MANAGE_PORT}
     ports:
       - "${MANAGE_PORT}:${MANAGE_PORT}"
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=${MANAGE_PORT}"
+      - "prometheus.job=manage-service"
     depends_on:
       db:
         condition: service_healthy
@@ -157,6 +165,10 @@ services:
       - SWAGGER_HOST=localhost:${STATS_PORT}
     ports:
       - "${STATS_PORT}:${STATS_PORT}"
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=${STATS_PORT}"
+      - "prometheus.job=statistics-service"
     depends_on:
       db:
         condition: service_healthy
@@ -176,6 +188,43 @@ services:
       - MODEL_NAME=${OLLAMA_MODEL}
     ports:
       - "${EXTRACTION_PORT}:${EXTRACTION_PORT}"
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=${EXTRACTION_PORT}"
+      - "prometheus.job=extraction-service"
+    networks:
+      - backend
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: fqw-dev-prometheus
+    user: root
+    volumes:
+      - ./prometheus.dev.yml:/etc/prometheus/prometheus.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - prometheus_dev_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - backend
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: fqw-dev-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_dev_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
     networks:
       - backend
 
@@ -186,3 +235,5 @@ networks:
 volumes:
   postgres_dev_data:
   minio_dev_data:
+  prometheus_dev_data:
+  grafana_dev_data:

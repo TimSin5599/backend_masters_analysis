@@ -6,6 +6,7 @@ import (
 
 	"auth-service/internal/domain"
 	"auth-service/internal/usecase"
+	"auth-service/pkg/metrics"
 
 	"github.com/gin-gonic/gin"
 )
@@ -59,16 +60,21 @@ func (r *authHandler) Login(c *gin.Context) {
 	if err != nil {
 		switch err {
 		case domain.ErrInvalidCredentials:
+			metrics.LoginAttemptsTotal.WithLabelValues("invalid_credentials").Inc()
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		case domain.ErrInvalidToken:
+			metrics.LoginAttemptsTotal.WithLabelValues("internal_error").Inc()
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token generation"})
 		case domain.ErrTokenRotation:
+			metrics.LoginAttemptsTotal.WithLabelValues("internal_error").Inc()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token rotation failed"})
 		default:
+			metrics.LoginAttemptsTotal.WithLabelValues("internal_error").Inc()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
 		return
 	}
+	metrics.LoginAttemptsTotal.WithLabelValues("success").Inc()
 
 	// Refresh токен — в httpOnly cookie (недоступна JS)
 	c.SetCookie(
@@ -104,14 +110,18 @@ func (r *authHandler) Refresh(c *gin.Context) {
 		c.SetCookie(refreshCookieName, "", -1, "/api/auth/v1/", "", true, true)
 		switch err {
 		case domain.ErrInvalidToken:
+			metrics.TokenRefreshTotal.WithLabelValues("invalid_token").Inc()
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired refresh token"})
 		case domain.ErrTokenRotation:
+			metrics.TokenRefreshTotal.WithLabelValues("internal_error").Inc()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token rotation failed"})
 		default:
+			metrics.TokenRefreshTotal.WithLabelValues("internal_error").Inc()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
 		return
 	}
+	metrics.TokenRefreshTotal.WithLabelValues("success").Inc()
 
 	// Устанавливаем новый refresh cookie (ротация)
 	c.SetCookie(
@@ -142,6 +152,7 @@ func (r *authHandler) Logout(c *gin.Context) {
 
 	// Очищаем cookie
 	c.SetCookie(refreshCookieName, "", -1, "/api/auth/v1/", "", true, true)
+	metrics.LogoutTotal.Inc()
 	c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
 }
 
@@ -165,18 +176,24 @@ func (r *authHandler) ChangePassword(c *gin.Context) {
 	if err := r.uc.ChangePassword(c.Request.Context(), userID.(string), req.OldPassword, req.NewPassword); err != nil {
 		switch err {
 		case domain.ErrUserNotFound:
+			metrics.PasswordChangesTotal.WithLabelValues("not_found").Inc()
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		case domain.ErrInvalidCredentials:
+			metrics.PasswordChangesTotal.WithLabelValues("invalid_credentials").Inc()
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid old password"})
 		case domain.ErrPasswordChange:
+			metrics.PasswordChangesTotal.WithLabelValues("internal_error").Inc()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Password change failed"})
 		case domain.ErrTokenRotation:
+			metrics.PasswordChangesTotal.WithLabelValues("internal_error").Inc()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token invalidation failed"})
 		default:
+			metrics.PasswordChangesTotal.WithLabelValues("internal_error").Inc()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
 		return
 	}
+	metrics.PasswordChangesTotal.WithLabelValues("success").Inc()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 }

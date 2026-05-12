@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"manage-service/pkg/metrics"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -31,6 +33,7 @@ func (h *Hub) subscribe(applicantID int64) *client {
 	h.mu.Lock()
 	h.clients[applicantID] = append(h.clients[applicantID], cl)
 	h.mu.Unlock()
+	metrics.SSEActiveClients.Inc()
 	log.Printf("SSE: client subscribed for applicant %d", applicantID)
 	return cl
 }
@@ -48,6 +51,7 @@ func (h *Hub) unsubscribe(applicantID int64, cl *client) {
 	if len(h.clients[applicantID]) == 0 {
 		delete(h.clients, applicantID)
 	}
+	metrics.SSEActiveClients.Dec()
 	log.Printf("SSE: client unsubscribed for applicant %d", applicantID)
 }
 

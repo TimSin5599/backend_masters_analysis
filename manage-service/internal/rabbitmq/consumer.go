@@ -10,6 +10,7 @@ import (
 	"manage-service/internal/domain/entity"
 	"manage-service/internal/sse"
 	"manage-service/internal/usecase"
+	"manage-service/pkg/metrics"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -377,6 +378,8 @@ func (c *Consumer) processMessage(d amqp.Delivery) {
 
 	_ = c.queueRepo.UpdateStatus(ctx, task.ID, "completed", nil)
 	log.Printf(" [<-] Completed Document %s", task.ID)
+	metrics.DocumentsProcessedTotal.WithLabelValues("success").Inc()
+	metrics.RabbitmqConsumedTotal.WithLabelValues("success").Inc()
 	c.hub.BroadcastStatus(task.ApplicantID, map[string]interface{}{
 		"task_id":  task.ID,
 		"category": task.DocumentCategory,
@@ -431,6 +434,10 @@ func (c *Consumer) autoTransferIfReady(ctx context.Context, applicantID int64) {
 // Pass docID=0 to skip the document status update (e.g. when the doc was not found).
 func (c *Consumer) failTask(applicantID int64, taskID string, category string, docID int64, docStatus string, d amqp.Delivery, err error, requeue bool) {
 	log.Printf(" [x] Failed Task %s (requeue=%v): %v", taskID, requeue, err)
+	if !requeue {
+		metrics.DocumentsProcessedTotal.WithLabelValues("error").Inc()
+		metrics.RabbitmqConsumedTotal.WithLabelValues("error").Inc()
+	}
 	errMsg := err.Error()
 	_ = c.queueRepo.UpdateStatus(context.Background(), taskID, "failed", &errMsg)
 

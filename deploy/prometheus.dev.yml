@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 5s      # в dev быстрее для удобства
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'fqw-services'
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 10s
+    relabel_configs:
+      # Scrape только контейнеры с лейблом prometheus.scrape=true
+      - source_labels: [__meta_docker_container_label_prometheus_scrape]
+        action: keep
+        regex: 'true'
+      # Заменяем адрес на IP:PORT из лейбла prometheus.port
+      - source_labels: [__address__, __meta_docker_container_label_prometheus_port]
+        action: replace
+        regex: '([^:]+)(?::\d+)?;(\d+)'
+        replacement: '${1}:${2}'
+        target_label: __address__
+      # job берём из лейбла prometheus.job
+      - source_labels: [__meta_docker_container_label_prometheus_job]
+        target_label: job
+      # instance — имя контейнера
+      - source_labels: [__meta_docker_container_name]
+        regex: '/(.*)'
+        target_label: instance

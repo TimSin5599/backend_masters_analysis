@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"manage-service/internal/domain/entity"
+	"manage-service/pkg/metrics"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -95,6 +96,7 @@ func (p *Producer) PublishTask(task entity.DocumentQueueTask) error {
 		}
 	}
 
+	metrics.RabbitmqPublishedTotal.Inc()
 	log.Printf(" [x] Sent document task %s with priority %d", task.ID, task.Priority)
 	return nil
 }

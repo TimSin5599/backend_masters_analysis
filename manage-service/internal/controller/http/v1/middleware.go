@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"manage-service/pkg/metrics"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -17,7 +20,7 @@ var (
 	mu                sync.Mutex
 )
 
-// LoggingMiddleware — middleware для логирования HTTP запросов.
+// LoggingMiddleware — middleware для логирования и сбора Prometheus HTTP-метрик.
 func LoggingMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		startTime := time.Now()
@@ -27,8 +30,20 @@ func LoggingMiddleware() gin.HandlerFunc {
 			c.Request.URL.Path,
 			c.ClientIP(),
 		)
+
 		c.Next()
-		fmt.Printf("[MANAGE] Статус: %d | Время: %v\n", c.Writer.Status(), time.Since(startTime))
+
+		duration := time.Since(startTime).Seconds()
+		status := strconv.Itoa(c.Writer.Status())
+		path := c.FullPath()
+		if path == "" {
+			path = "unknown"
+		}
+
+		metrics.HttpRequestsTotal.WithLabelValues(c.Request.Method, path, status).Inc()
+		metrics.HttpRequestDuration.WithLabelValues(c.Request.Method, path).Observe(duration)
+
+		fmt.Printf("[MANAGE] Статус: %s | Время: %v\n", status, time.Since(startTime))
 	}
 }
 

@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth-service:8101']
+
+  - job_name: 'manage-service'
+    static_configs:
+      - targets: ['manage-service:8102']
+
+  - job_name: 'statistics-service'
+    static_configs:
+      - targets: ['statistics-service:8103']
+
+  - job_name: 'extraction-service'
+    static_configs:
+      - targets: ['extraction-service:8000']

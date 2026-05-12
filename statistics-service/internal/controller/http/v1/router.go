@@ -7,9 +7,11 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"statistics-service/internal/usecase"
+	"statistics-service/pkg/metrics"
 )
 
 type Handler struct {
@@ -36,6 +38,18 @@ func NewRouter(handler *gin.Engine, uc *usecase.StatsUseCase, corsOrigin string)
 		MaxAge:           12 * time.Hour,
 	}))
 
+	handler.Use(func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		path := c.FullPath()
+		if path == "" {
+			path = "unknown"
+		}
+		status := strconv.Itoa(c.Writer.Status())
+		metrics.HttpRequestsTotal.WithLabelValues(c.Request.Method, path, status).Inc()
+		metrics.HttpRequestDuration.WithLabelValues(c.Request.Method, path).Observe(time.Since(start).Seconds())
+	})
+
 	h := &Handler{uc: uc}
 
 	v1 := handler.Group("/v1/stats")
@@ -44,6 +58,7 @@ func NewRouter(handler *gin.Engine, uc *usecase.StatsUseCase, corsOrigin string)
 		v1.GET("/dynamics", h.getDynamics)
 	}
 
+	handler.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	handler.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
@@ -58,8 +73,11 @@ func NewRouter(handler *gin.Engine, uc *usecase.StatsUseCase, corsOrigin string)
 // @Failure     500  {object}  map[string]string
 // @Router      /v1/stats/overview [get]
 func (h *Handler) getOverview(c *gin.Context) {
+	timer := metrics.StatsQueryDuration.WithLabelValues("overview")
+	t := time.Now()
 	programID, _ := strconv.ParseInt(c.DefaultQuery("program_id", "0"), 10, 64)
 	stats, err := h.uc.GetOverview(c.Request.Context(), programID)
+	timer.Observe(time.Since(t).Seconds())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -79,10 +97,13 @@ func (h *Handler) getOverview(c *gin.Context) {
 // @Failure     500  {object}  map[string]string
 // @Router      /v1/stats/dynamics [get]
 func (h *Handler) getDynamics(c *gin.Context) {
+	timer := metrics.StatsQueryDuration.WithLabelValues("dynamics")
+	t := time.Now()
 	period := c.DefaultQuery("period", "daily")
 	programID, _ := strconv.ParseInt(c.DefaultQuery("program_id", "0"), 10, 64)
 
 	data, err := h.uc.GetDynamics(c.Request.Context(), period, programID)
+	timer.Observe(time.Since(t).Seconds())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
