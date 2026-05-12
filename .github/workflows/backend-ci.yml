@@ -68,32 +68,35 @@ jobs:
     needs: test-and-lint
     if: github.ref == 'refs/heads/main' # Деплоим только при пуше в main
     runs-on: ubuntu-latest
+    environment: production
+    # Секреты задаются в GitHub → Settings → Environments → production → Environment secrets:
+    #   HOST     — IP или hostname продакшн-сервера
+    #   USERNAME — SSH-пользователь на сервере
+    #   SSH_KEY  — приватный SSH-ключ (RSA / Ed25519)
+    #   ENV_FILE — содержимое deploy/.env (скопируйте .env.example и заполните)
     steps:
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
-          MANAGE_CONF: ${{ secrets.CONFIG_MANAGE_SERVICE }}
-          AUTH_CONF: ${{ secrets.CONFIG_AUTH_SERVICE }}
-          STATS_CONF: ${{ secrets.CONFIG_STATS_SERVICE }}
+          ENV_FILE: ${{ secrets.ENV_FILE }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          envs: MANAGE_CONF,AUTH_CONF,STATS_CONF
+          envs: ENV_FILE
           script: |
-            # 1. Переходим в папку с бэкендом (замените путь на ВАШ реальный на сервере)
             cd /opt/FQW/backend
-            
-            # 2. Обновляем код бэкенда
+
+            # 1. Обновляем код
             git pull origin main
-            
-            # 3. Восстанавливаем конфигурации
-            mkdir -p manage-service/config auth-service/config statistics-service/config
-            echo "$MANAGE_CONF" > manage-service/config/config.yml
-            echo "$AUTH_CONF" > auth-service/config/config.yml
-            echo "$STATS_CONF" > statistics-service/config/config.yml
-            
-            # 4. Возвращаемся в корень и запускаем сборку
-            # (так как ваш docker-compose.yml лежит на уровень выше)
-            cd ..
-            docker-compose up -d --build
+
+            # 2. Восстанавливаем .env (единый источник конфигурации)
+            echo "$ENV_FILE" > deploy/.env
+
+            # 3. Применяем новые миграции из папок migrations/ каждого сервиса
+            chmod +x deploy/migrate.sh
+            bash deploy/migrate.sh
+
+            # 4. Пересобираем и перезапускаем сервисы
+            cd deploy
+            docker compose up -d --build
