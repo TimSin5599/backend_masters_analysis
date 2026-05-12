@@ -85,7 +85,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           envs: ENV_FILE
           script: |
-            cd /opt/FQW/backend
+            cd /home/tima5599/fqw/backend
 
             # 1. Обновляем код
             git pull origin main
